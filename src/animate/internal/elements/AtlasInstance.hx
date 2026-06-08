@@ -95,7 +95,7 @@ class AtlasInstance extends AnimateElement<AtlasInstanceJson>
 	override function draw(camera:FlxCamera, index:Int, frameIndex:Int, parentMatrix:FlxMatrix, ?transform:ColorTransform, ?blend:BlendMode,
 			?antialiasing:Bool, ?shader:FlxShader):Void
 	{
-		if (frame == null || frame.frame == null) // should add a warn here
+		if (frame == null || frame.frame == null || frame.parent == null || frame.parent.bitmap == null) // should add a warn here
 			return;
 
 		_mat.copyFrom(tileMatrix);
