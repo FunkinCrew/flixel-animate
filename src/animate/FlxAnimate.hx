@@ -320,6 +320,13 @@ class FlxAnimate extends FlxSprite
 		getScreenPosition(_point, camera);
 		_point.x += origin.x - offset.x;
 		_point.y += origin.y - offset.y;
+
+		if (isAnimate && applyStageMatrix)
+		{
+			_point.x -= timeline._bounds.x * library.matrix.a + library.matrix.tx;
+			_point.y -= timeline._bounds.y * library.matrix.d + library.matrix.ty;
+		}
+		
 		matrix.translate(_point.x, _point.y);
 
 		if (isPixelPerfectRender(camera))
@@ -466,6 +473,40 @@ class FlxAnimate extends FlxSprite
 		return rect;
 	}
 	#end
+
+	override function getScreenPosition(?result:FlxPoint, ?camera:FlxCamera):FlxPoint
+	{
+		var position:FlxPoint = super.getScreenPosition(result, camera);
+
+		if (isAnimate && applyStageMatrix)
+		{
+			position.x += timeline._bounds.x * library.matrix.a + library.matrix.tx;
+			position.y += timeline._bounds.y * library.matrix.d + library.matrix.ty;
+		}
+
+		return position;
+	}
+
+ 	override function getBoundingBox(camera:FlxCamera):FlxRect 
+	{
+		var box:FlxRect = super.getBoundingBox(camera);
+
+		if (isAnimate && applyStageMatrix) 
+		{
+			var originalWidth:Float = box.width;
+			var originalHeight:Float = box.height;
+
+			box.setSize(box.width * library.matrix.a, box.height * library.matrix.d);
+
+			if (postStageMatrixApply) 
+			{
+				box.x -= (box.width - originalWidth) * 0.5;
+				box.y -= (box.height - originalHeight) * 0.5;
+			}
+		}
+
+		return box;
+	}
 
 	function getAnimateOrigin(?result:FlxPoint):FlxPoint
 	{
