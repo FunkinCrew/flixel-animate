@@ -32,15 +32,23 @@ class FlxAnimateAssets
 		return false;
 	}
 
-	public static dynamic function getText(path:String):String
+	public static dynamic function getText(path:String):Null<String>
 	{
 		// Check openfl/flixel assets first
 		#if (flixel >= "5.9.0")
-		if (FlxG.assets.exists(path, AssetType.TEXT))
+		if (FlxG.assets.exists(path, AssetType.TEXT)) {
+			// This only happens on HTML5.
+			if (!FlxG.assets.isLocal(path, AssetType.TEXT))
+				throw 'Text asset "$path" cannot be fetched synchronously, did you forget to cache it?';
 			return FlxG.assets.getText(path);
+		}
 		#else
-		if (openfl.utils.Assets.exists(path, AssetType.TEXT))
+		if (openfl.utils.Assets.exists(path, AssetType.TEXT)) {
+			// This only happens on HTML5.
+			if (!openfl.utils.Assets.isLocal(path, AssetType.TEXT))
+				throw 'Text asset "$path" cannot be fetched synchronously, did you forget to cache it?';
 			return openfl.utils.Assets.getText(path);
+		}
 		#end
 
 		// Fallback to filesystem
@@ -56,11 +64,19 @@ class FlxAnimateAssets
 	{
 		// Check openfl/flixel assets first
 		#if (flixel >= "5.9.0")
-		if (FlxG.assets.exists(path, AssetType.BINARY))
+		if (FlxG.assets.exists(path, AssetType.BINARY)) {
+			// This only happens on HTML5.
+			if (!FlxG.assets.isLocal(path, AssetType.BINARY))
+				throw 'Binary asset "$path" cannot be fetched synchronously, did you forget to cache it?';
 			return FlxG.assets.getBytes(path);
+		}
 		#else
-		if (openfl.utils.Assets.exists(path, AssetType.BINARY))
+		if (openfl.utils.Assets.exists(path, AssetType.BINARY)) {
+			// This only happens on HTML5.
+			if (!openfl.utils.Assets.isLocal(path, AssetType.BINARY))
+				throw 'Binary asset "$path" cannot be fetched synchronously, did you forget to cache it?';
 			return openfl.utils.Assets.getBytes(path);
+		}
 		#end
 
 		// Fallback to filesystem
@@ -76,11 +92,17 @@ class FlxAnimateAssets
 	{
 		// Check openfl/flixel assets first
 		#if (flixel >= "5.9.0")
-		if (FlxG.assets.exists(path, AssetType.IMAGE))
+		if (FlxG.assets.exists(path, AssetType.IMAGE)){
+			if (!FlxG.assets.isLocal(path, AssetType.IMAGE))
+				throw 'Bitmap asset "$path" cannot be fetched synchronously, did you forget to cache it?';
 			return FlxG.assets.getBitmapData(path);
+		}
 		#else
-		if (openfl.utils.Assets.exists(path, AssetType.IMAGE))
+		if (openfl.utils.Assets.exists(path, AssetType.IMAGE)){
+			if (!openfl.utils.Assets.isLocal(path, AssetType.IMAGE))
+				throw 'Bitmap asset "$path" cannot be fetched synchronously, did you forget to cache it?';
 			return openfl.utils.Assets.getBitmapData(path);
+		}
 		#end
 
 		// Fallback to filesystem
