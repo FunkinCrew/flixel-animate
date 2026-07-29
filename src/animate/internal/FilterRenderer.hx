@@ -28,7 +28,7 @@ import openfl.geom.Rectangle;
 #if !flash
 import animate.internal.filters.MaskShader;
 import openfl.display.Graphics;
-import openfl.display.OpenGLRenderer;
+import openfl.display.Context3DRenderer;
 import openfl.display.Shader;
 import openfl.display._internal.Context3DGraphics;
 #else
@@ -40,7 +40,7 @@ import flixel.util.FlxColor;
 #if !flash
 @:access(flixel.FlxCamera)
 @:access(flixel.graphics.frames.FlxFrame)
-@:access(openfl.display.OpenGLRenderer)
+@:access(openfl.display.Context3DRenderer)
 @:access(openfl.display.Stage)
 @:access(openfl.display3D.Context3D)
 @:access(openfl.geom.Rectangle)
@@ -154,13 +154,18 @@ class FilterRenderer
 
 		renderer.__worldTransform.identity();
 
-		var gl = renderer.__gl;
-		var renderBuffer = bmp.getTexture(context);
+		// BGFX has readTexture but it's async and doesn't give results until a frame later or so
+		// So for now there's no proper way to read back the graphics to the CPU for software filtering...
+		if (context.isOpenGL)
+		{
+			var gl = renderer.__gl;
+			var renderBuffer = bmp.getTexture(context);
 
-		@:privateAccess
-		gl.readPixels(0, 0, bmp.width, bmp.height, renderBuffer.__format, gl.UNSIGNED_BYTE, bmp.image.data);
-		bmp.image.version = 0;
-		bmp.__textureVersion = -1;
+			@:privateAccess
+			gl.readPixels(0, 0, bmp.width, bmp.height, renderBuffer.__format, gl.UNSIGNED_BYTE, bmp.image.data);
+			bmp.image.version = 0;
+			bmp.__textureVersion = -1;
+		}
 
 		(cacheRTT != null) ? context.setRenderToTexture(cacheRTT, cacheRTTDepthStencil, cacheRTTAntiAlias,
 			cacheRTTSurfaceSelector) : context.setRenderToBackBuffer();
@@ -364,29 +369,32 @@ class FilterRenderer
 
 		var point = Point.__pool.get();
 
-		#if desktop
+		// #if desktop
 		for (filter in filters)
 		{
 			if (filter != null)
 				bitmap = __renderGpuFilter(filter, bitmap, bitmap2, bitmap3);
 		}
-		#end
+		// #end
 
-		var gl = renderer.__gl;
-		var renderBuffer = bitmap.getTexture(renderer.__context3D);
+		if (renderer.__context3D.isOpenGL)
+		{
+			var gl = renderer.__gl;
+			var renderBuffer = bitmap.getTexture(renderer.__context3D);
 
-		@:privateAccess
-		gl.readPixels(0, 0, bitmap.width, bitmap.height, renderBuffer.__format, gl.UNSIGNED_BYTE, bitmap.image.data);
-		bitmap.image.version = 0;
-		bitmap.__textureVersion = -1;
+			@:privateAccess
+			gl.readPixels(0, 0, bitmap.width, bitmap.height, renderBuffer.__format, gl.UNSIGNED_BYTE, bitmap.image.data);
+			bitmap.image.version = 0;
+			bitmap.__textureVersion = -1;
+		}
 
-		#if !desktop
+		// #if !desktop
 		for (filter in filters)
 		{
 			if (filter != null)
 				bitmap = __renderCpuFilter(filter, bitmap, point);
 		}
-		#end
+		// #end
 
 		if (bitmap2 != bmp) // in case the filter reuses the bitmap due to not needing a second one
 			FlxDestroyUtil.dispose(bitmap2);
@@ -457,22 +465,25 @@ class FilterRenderer
 		target.__renderTransform.identity();
 		renderer.__renderFilterPass(bitmap, shader, true);
 
-		var gl = renderer.__gl;
-		var renderBuffer = target.getTexture(renderer.__context3D);
+		if (renderer.__context3D.isOpenGL)
+		{
+			var gl = renderer.__gl;
+			var renderBuffer = target.getTexture(renderer.__context3D);
 
-		gl.readPixels(0, 0, target.width, target.height, renderBuffer.__format, gl.UNSIGNED_BYTE, target.image.data);
-		target.image.version = 0;
-		target.__textureVersion = -1;
+			gl.readPixels(0, 0, target.width, target.height, renderBuffer.__format, gl.UNSIGNED_BYTE, target.image.data);
+			target.image.version = 0;
+			target.__textureVersion = -1;
+		}
 	}
 
-	static var renderer(get, null):OpenGLRenderer;
+	static var renderer(get, null):Context3DRenderer;
 
 	static function get_renderer()
 		return (renderer != null) ? renderer : (renderer = __createRenderer());
 
-	static function __createRenderer():OpenGLRenderer
+	static function __createRenderer():Context3DRenderer
 	{
-		var renderer = new OpenGLRenderer(FlxG.game.stage.context3D);
+		var renderer = new Context3DRenderer(FlxG.game.stage.context3D);
 		renderer.__worldTransform = new Matrix();
 		renderer.__worldColorTransform = new ColorTransform();
 		return renderer;
