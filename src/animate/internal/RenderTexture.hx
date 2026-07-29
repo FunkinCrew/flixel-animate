@@ -11,7 +11,7 @@ import flixel.util.FlxDestroyUtil;
 import openfl.Lib;
 import openfl.display.BitmapData;
 import openfl.display.BlendMode;
-import openfl.display.OpenGLRenderer;
+import openfl.display.Context3DRenderer;
 import openfl.geom.ColorTransform;
 import openfl.geom.Matrix;
 import openfl.display3D.Context3DBlendTarget;
@@ -20,7 +20,7 @@ import openfl.display3D.Context3DBlendTarget;
 @:access(flixel.graphics.FlxGraphic)
 @:access(openfl.display.BitmapData)
 @:access(openfl.display.DisplayObjectContainer)
-@:access(openfl.display.OpenGLRenderer)
+@:access(openfl.display.Context3DRenderer)
 @:access(openfl.display3D.Context3D)
 @:access(openfl.display3D.textures.TextureBase)
 @:access(openfl.geom.ColorTransform)
@@ -30,7 +30,7 @@ class RenderTexture implements IFlxDestroyable
 	public var graphic:FlxGraphic;
 	public var graphicKey:String = '';
 
-	var _renderer:OpenGLRenderer;
+	var _renderer:Context3DRenderer;
 	var _bitmaps:Map<String, BitmapData>;
 	var _currentBitmap:BitmapData;
 	var _camera:FlxCamera;
@@ -39,7 +39,7 @@ class RenderTexture implements IFlxDestroyable
 
 	public function new(width:Int, height:Int, ?graphicKey:String):Void
 	{
-		_renderer = new OpenGLRenderer(FlxG.stage.context3D);
+		_renderer = new Context3DRenderer(FlxG.stage.context3D);
 		_renderer.__worldTransform = new Matrix();
 		_renderer.__worldColorTransform = new ColorTransform();
 
