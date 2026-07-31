@@ -226,11 +226,11 @@ class FlxAnimateFrames extends FlxAtlasFrames
 	public static function fromAnimate(animate:String, ?spritemaps:Array<SpritemapInput>, ?metadata:String, ?key:String, ?unique:Bool = false,
 			?settings:FlxAnimateSettings):FlxAnimateFrames
 	{
-		var key:String = key ?? animate;
+		var animkey:String = key ?? animate;
 
-		if (!unique && _cachedAtlases.exists(key))
+		if (!unique && _cachedAtlases.exists(animkey))
 		{
-			var cachedAtlas = _cachedAtlases.get(key);
+			var cachedAtlas = _cachedAtlases.get(animkey);
 			var isAtlasDestroyed = false;
 
 			// Check if the atlas is complete
@@ -264,7 +264,10 @@ class FlxAnimateFrames extends FlxAtlasFrames
 			// This check didn't help but i believe it's good to have it still here for safety
 			// -Karim
 			@:privateAccess
-			if (!isAtlasDestroyed && (cachedAtlas.timeline.layers == null || cachedAtlas.timeline.layers.length <= 0 || cachedAtlas.timeline._bounds == null))
+			if (!isAtlasDestroyed
+				&& (cachedAtlas.timeline.layers == null
+					|| cachedAtlas.timeline.layers.length <= 0
+					|| cachedAtlas.timeline._bounds == null))
 			{
 				isAtlasDestroyed = true;
 			}
@@ -272,9 +275,9 @@ class FlxAnimateFrames extends FlxAtlasFrames
 			// Destroy previously cached atlas if incomplete, and create a new instance
 			if (isAtlasDestroyed)
 			{
-				FlxG.log.warn('Texture Atlas with the key "$key" was previously cached, but incomplete. Was it incorrectly destroyed?');
+				FlxG.log.warn('Texture Atlas with the key "$animkey" was previously cached, but incomplete. Was it incorrectly destroyed?');
 				cachedAtlas.destroy();
-				_cachedAtlases.remove(key);
+				_cachedAtlases.remove(animkey);
 			}
 			else
 			{
@@ -292,7 +295,8 @@ class FlxAnimateFrames extends FlxAtlasFrames
 	{
 		// getText() returns null if the asset could not be fetched.
 		var text:Null<String> = FlxAnimateAssets.getText(path);
-		if (text == null) return null;
+		if (text == null)
+			return null;
 		return text.replace(String.fromCharCode(0xFEFF), "");
 	}
 
@@ -304,7 +308,8 @@ class FlxAnimateFrames extends FlxAtlasFrames
 
 	static function getGraphic(path:String, ?key:String):FlxGraphic
 	{
-		if (key == null) key = path;
+		if (key == null)
+			key = path;
 
 		if (FlxG.bitmap.checkCache(key))
 			return FlxG.bitmap.get(key);
@@ -350,13 +355,15 @@ class FlxAnimateFrames extends FlxAtlasFrames
 		var spritemapList = listWithFilter(path, (file) -> file.startsWith("spritemap"), false);
 		var jsonList = spritemapList.filter((file) -> file.endsWith(".json"));
 
+		var jsonI:Int = 0;
 		for (sm in jsonList)
 		{
+			jsonI++;
 			var id = sm.split("spritemap")[1].split(".")[0];
 			var imageFile = spritemapList.filter((file) -> file.startsWith('spritemap$id') && !file.endsWith(".json"))[0];
 
 			spritemaps.push({
-				source: getGraphic('$path/$imageFile', key),
+				source: getGraphic('$path/$imageFile', (jsonList.length > 1 && key != null) ? '$key-$jsonI' : key),
 				json: getTextFromPath('$path/$sm')
 			});
 		}
