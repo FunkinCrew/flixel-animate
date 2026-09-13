@@ -226,11 +226,11 @@ class FlxAnimateFrames extends FlxAtlasFrames
 	public static function fromAnimate(animate:String, ?spritemaps:Array<SpritemapInput>, ?metadata:String, ?key:String, ?unique:Bool = false,
 			?settings:FlxAnimateSettings):FlxAnimateFrames
 	{
-		var key:String = key ?? animate;
+		var animkey:String = key ?? animate;
 
-		if (!unique && _cachedAtlases.exists(key))
+		if (!unique && _cachedAtlases.exists(animkey))
 		{
-			var cachedAtlas = _cachedAtlases.get(key);
+			var cachedAtlas = _cachedAtlases.get(animkey);
 			var isAtlasDestroyed = false;
 
 			// Check if the atlas is complete
@@ -260,12 +260,24 @@ class FlxAnimateFrames extends FlxAtlasFrames
 				}
 			}
 
+			// I noticed sometimes the timeline layers or bounds get nullified
+			// This check didn't help but i believe it's good to have it still here for safety
+			// -Karim
+			@:privateAccess
+			if (!isAtlasDestroyed
+				&& (cachedAtlas.timeline.layers == null
+					|| cachedAtlas.timeline.layers.length <= 0
+					|| cachedAtlas.timeline._bounds == null))
+			{
+				isAtlasDestroyed = true;
+			}
+
 			// Destroy previously cached atlas if incomplete, and create a new instance
 			if (isAtlasDestroyed)
 			{
-				FlxG.log.warn('Texture Atlas with the key "$key" was previously cached, but incomplete. Was it incorrectly destroyed?');
+				FlxG.log.warn('Texture Atlas with the key "$animkey" was previously cached, but incomplete. Was it incorrectly destroyed?');
 				cachedAtlas.destroy();
-				_cachedAtlases.remove(key);
+				_cachedAtlases.remove(animkey);
 			}
 			else
 			{
@@ -279,9 +291,13 @@ class FlxAnimateFrames extends FlxAtlasFrames
 		return _fromAnimateInput(animate, spritemaps, metadata, key, settings);
 	}
 
-	static function getTextFromPath(path:String):String
+	static function getTextFromPath(path:String):Null<String>
 	{
-		return FlxAnimateAssets.getText(path).replace(String.fromCharCode(0xFEFF), "");
+		// getText() returns null if the asset could not be fetched.
+		var text:Null<String> = FlxAnimateAssets.getText(path);
+		if (text == null)
+			return null;
+		return text.replace(String.fromCharCode(0xFEFF), "");
 	}
 
 	static function listWithFilter(path:String, filter:String->Bool, includeSubDirectories:Bool = false)
@@ -290,12 +306,15 @@ class FlxAnimateFrames extends FlxAtlasFrames
 		return list.filter(filter);
 	}
 
-	static function getGraphic(path:String):FlxGraphic
+	static function getGraphic(path:String, ?key:String):FlxGraphic
 	{
-		if (FlxG.bitmap.checkCache(path))
-			return FlxG.bitmap.get(path);
+		if (key == null)
+			key = path;
 
-		return FlxG.bitmap.add(FlxAnimateAssets.getBitmapData(path), false, path);
+		if (FlxG.bitmap.checkCache(key))
+			return FlxG.bitmap.get(key);
+
+		return FlxG.bitmap.add(FlxAnimateAssets.getBitmapData(path), false, key);
 	}
 
 	var _symbolDictionary:Null< #if flash Array<SymbolJson> #else Vector<SymbolJson> #end>;
@@ -336,13 +355,15 @@ class FlxAnimateFrames extends FlxAtlasFrames
 		var spritemapList = listWithFilter(path, (file) -> file.startsWith("spritemap"), false);
 		var jsonList = spritemapList.filter((file) -> file.endsWith(".json"));
 
+		var jsonI:Int = 0;
 		for (sm in jsonList)
 		{
+			jsonI++;
 			var id = sm.split("spritemap")[1].split(".")[0];
 			var imageFile = spritemapList.filter((file) -> file.startsWith('spritemap$id') && !file.endsWith(".json"))[0];
 
 			spritemaps.push({
-				source: getGraphic('$path/$imageFile'),
+				source: getGraphic('$path/$imageFile', (jsonList.length > 1 && key != null) ? '$key-$jsonI' : key),
 				json: getTextFromPath('$path/$sm')
 			});
 		}
@@ -481,7 +502,7 @@ class FlxAnimateFrames extends FlxAtlasFrames
 	 * Combines two ``FlxAtlasFrames`` into one.
 	 * Recommended to use over manually calling ``frames.addAtlas`` when working with
 	 * ``FlxAnimateFrames`` and other mixed frame types, due to some special merge order conditions it requires.
-	 * 
+	 *
 	 * @param atlasA First atlas to combine.
 	 * @param atlasB Second atlas to combine.
 	 * @return Newly merged ``FlxAtlasFrames`` object.
@@ -495,7 +516,7 @@ class FlxAnimateFrames extends FlxAtlasFrames
 	 * Combines a list of ``FlxAtlasFrames`` into one.
 	 * Recommended to use over manually calling ``frames.addAtlas`` when working with
 	 * ``FlxAnimateFrames`` and other mixed frame types, due to some special merge order conditions it requires.
-	 * 
+	 *
 	 * @param atlasList List of atlas frames to combine.
 	 * @return Newly merged ``FlxAtlasFrames`` object.
 	 */
