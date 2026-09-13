@@ -71,7 +71,7 @@ class FlxAnimate extends FlxSprite
 	/**
 	 * Whether to apply the stage matrix of the Texture Atlas.
 	 * It also makes the sprite render with the bounds from Animate.
-	 * 
+	 *
 	 * Take note that these bounds may not be accurate to flixel positions.
 	 */
 	public var applyStageMatrix(default, set):Bool = false;
@@ -79,10 +79,10 @@ class FlxAnimate extends FlxSprite
 	/**
 	 * Wether to apply the stage matrix of the Texture Atlas before or after FlxSprite calculations.
 	 * Changes the behaviour of a sprite in relation to the position, scale and rotation of the matrix.
-	 * 
+	 *
 	 * When set to ``false`` the stage matrix will apply before other FlxSprite matrix calculations,
 	 * as if the symbol was contained inside of the sprite.
-	 * 
+	 *
 	 * When set to ``true`` the stage matrix will apply after FlxSprite matrix calculations,
 	 * as if the sprite was contained inside of the symbol.
 	 */
@@ -202,18 +202,51 @@ class FlxAnimate extends FlxSprite
 		#end
 	}
 
-	function drawAnimate(camera:FlxCamera):Void
-	{
-		final willUseRenderTexture = checkRenderTexture();
-		final matrix = _matrix;
-		matrix.identity();
+	/**
+	 * Set by `getScreenBounds` after it builds the draw matrix for a camera.
+	 * `draw` culls with `isOnScreen` right before calling `drawAnimate` for the same camera,
+	 * so the matrix in `_matrix` can be reused instead of rebuilding the whole chain a second time.
+	 */
+	var _drawMatrixFromCull:Bool = false;
+	var _drawMatrixCamera:FlxCamera = null;
 
-		@:privateAccess
-		var bounds = timeline._bounds;
+	/**
+	 * Prepares `_matrix` for `drawAnimate`, reusing the cull pass matrix when it is still valid.
+	 * @return True if the matrix was reused, false if it was rebuilt from scratch.
+	 */
+	function prepareAnimateDrawMatrix(matrix:FlxMatrix, camera:FlxCamera, bounds:FlxRect, willUseRenderTexture:Bool):Bool
+	{
+		final reuse = _drawMatrixFromCull && _drawMatrixCamera == camera && !isPixelPerfectRender(camera);
+		_drawMatrixFromCull = false;
+		_drawMatrixCamera = null;
+
+		if (reuse)
+		{
+			if (!willUseRenderTexture)
+			{
+				matrix.tx -= bounds.x * matrix.a + bounds.y * matrix.c;
+				matrix.ty -= bounds.x * matrix.b + bounds.y * matrix.d;
+			}
+			return true;
+		}
+
+		matrix.identity();
 		if (!willUseRenderTexture)
 			matrix.translate(-bounds.x, -bounds.y);
 
 		prepareAnimateMatrix(matrix, camera, bounds);
+		return false;
+	}
+
+	function drawAnimate(camera:FlxCamera):Void
+	{
+		final willUseRenderTexture = checkRenderTexture();
+		final matrix = _matrix;
+
+		@:privateAccess
+		var bounds = timeline._bounds;
+
+		prepareAnimateDrawMatrix(matrix, camera, bounds, willUseRenderTexture);
 
 		if (renderStage)
 			drawStage(camera);
@@ -451,6 +484,9 @@ class FlxAnimate extends FlxSprite
 		matrix.identity();
 
 		isAnimate ? prepareAnimateMatrix(matrix, camera, timeline._bounds) : prepareDrawMatrix(matrix, camera);
+
+		_drawMatrixFromCull = isAnimate;
+		_drawMatrixCamera = camera;
 
 		if (isAnimate && renderStage)
 		{
