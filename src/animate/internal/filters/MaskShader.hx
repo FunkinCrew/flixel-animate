@@ -17,12 +17,12 @@ class MaskShader extends GraphicsShader
 
 		vec4 animate_mask()
 		{
-			vec2 maskCoord = (openfl_TextureCoordv * maskUVScale) + maskUVOffset;			
+			vec2 maskCoord = (openfl_TextureCoordv * maskUVScale) + maskUVOffset;
 			vec4 maskerColor = texture2D(maskBitmap, maskCoord);
 
 			if (maskerColor.a <= 0.0)
 				return vec4(0.0);
-		
+
 			vec4 color = texture2D(bitmap, openfl_TextureCoordv);
 	' +
 		#if html5
@@ -33,7 +33,7 @@ class MaskShader extends GraphicsShader
 		+ '
 		return color;
 		}
-		
+
 		void main()
 		{
 			gl_FragColor = animate_mask();
@@ -74,7 +74,7 @@ class MaskShader extends GraphicsShader
 
 		// Preparing the shader and extra bitmaps needed
 		var shader = shader.setup(masked, masker, rect.x, rect.y);
-		var maskedClone = masked.clone();
+		var maskedClone = masked.clone(false);
 
 		// Render the mask
 		FilterRenderer.renderWithShader(masked, maskedClone, shader);
