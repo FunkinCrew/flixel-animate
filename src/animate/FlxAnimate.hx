@@ -298,19 +298,24 @@ class FlxAnimate extends FlxSprite
 
 		if (_renderTextureDirty)
 		{
-			command.blend = NORMAL;
-			command.shader = null;
-			command.transform = null;
+			if (command != null)
+			{
+				command.blend = NORMAL;
+				command.shader = null;
+				command.transform = null;
+			}
 
 			_renderTexture.init(Math.ceil(bounds.width), Math.ceil(bounds.height));
-			_renderTexture.drawToCamera((camera, matrix) ->
-			{
-				matrix.translate(-bounds.x, -bounds.y);
-				timeline.draw(camera, matrix, command);
-			});
+			_renderTexture.drawToCamera(renderRTT.bind(_, _, bounds, command));
 			_renderTexture.render();
 			_renderTextureDirty = false;
 		}
+	}
+
+	function renderRTT(camera:FlxCamera, matrix:FlxMatrix, bounds:FlxRect, command:AnimateDrawCommand):Void
+	{
+		matrix.translate(-bounds.x, -bounds.y);
+		timeline.draw(camera, matrix, command);
 	}
 
 	function drawRenderTexture(camera:FlxCamera, matrix:FlxMatrix):Void
