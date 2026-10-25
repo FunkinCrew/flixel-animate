@@ -6,15 +6,12 @@ import flixel.FlxSprite;
 import flixel.graphics.FlxGraphic;
 import flixel.graphics.frames.FlxFrame;
 import flixel.math.FlxMatrix;
-import flixel.math.FlxRect;
 import flixel.system.FlxAssets.FlxShader;
 import flixel.util.FlxDestroyUtil;
 import openfl.Lib;
 import openfl.display.BitmapData;
 import openfl.display.BlendMode;
 import openfl.display.OpenGLRenderer;
-import openfl.display3D.Context3D;
-import openfl.display3D.textures.RectangleTexture;
 import openfl.geom.ColorTransform;
 import openfl.geom.Matrix;
 import openfl.display3D.Context3DBlendTarget;
@@ -31,6 +28,7 @@ class RenderTexture implements IFlxDestroyable
 {
 	public var antialiasing:Bool = false;
 	public var graphic:FlxGraphic;
+	public var graphicKey:String = '';
 
 	var _renderer:OpenGLRenderer;
 	var _bitmaps:Map<String, BitmapData>;
@@ -39,7 +37,7 @@ class RenderTexture implements IFlxDestroyable
 	var _matrix:FlxMatrix;
 	var _frame:FlxFrame;
 
-	public function new(width:Int, height:Int):Void
+	public function new(width:Int, height:Int, ?graphicKey:String):Void
 	{
 		_renderer = new OpenGLRenderer(FlxG.stage.context3D);
 		_renderer.__worldTransform = new Matrix();
@@ -48,6 +46,7 @@ class RenderTexture implements IFlxDestroyable
 		_bitmaps = [];
 		_camera = new FlxCamera();
 		_matrix = FilterRenderer.matrixPool.get();
+		this.graphicKey = graphicKey ?? '';
 
 		init(width, height);
 	}
@@ -189,6 +188,16 @@ class RenderTexture implements IFlxDestroyable
 		_currentBitmap = _bitmaps.get(id);
 
 		if (graphic == null)
-			graphic = FlxGraphic.fromBitmapData(_currentBitmap, false, null, false);
+    {
+      if (graphicKey != '')
+      {
+        @:privateAccess
+        graphic = new FlxGraphic(graphicKey, _currentBitmap);
+      }
+      else
+      {
+        graphic = FlxGraphic.fromBitmapData(_currentBitmap, false, null, false);
+      }
+    }
 	}
 }
