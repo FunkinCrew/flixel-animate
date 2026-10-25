@@ -203,6 +203,8 @@ class SymbolInstance extends AnimateElement<SymbolInstanceJson>
 			_drawCommand.copyFrom(command);
 			command = _drawCommand;
 
+			libraryItem.timeline.currentFrame = getFrameIndex(index, frameIndex);
+
 			if (command.onSymbolDraw != null)
 				command.onSymbolDraw(this, command);
 		}
