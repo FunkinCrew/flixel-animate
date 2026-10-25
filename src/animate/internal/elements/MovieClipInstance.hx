@@ -4,16 +4,10 @@ import animate.FlxAnimateFrames.FilterQuality;
 import animate.FlxAnimateJson;
 import animate.internal.elements.AtlasInstance;
 import flixel.FlxCamera;
-import flixel.math.FlxMath;
 import flixel.math.FlxMatrix;
-import flixel.math.FlxPoint;
 import flixel.math.FlxRect;
-import flixel.system.FlxAssets.FlxShader;
 import flixel.util.FlxDestroyUtil;
-import openfl.display.BlendMode;
 import openfl.filters.BitmapFilter;
-import openfl.filters.BlurFilter;
-import openfl.geom.ColorTransform;
 
 class MovieClipInstance extends SymbolInstance
 {
@@ -114,7 +108,7 @@ class MovieClipInstance extends SymbolInstance
 			parentFrame.setDirty();
 	}
 
-	override function getBounds(frameIndex:Int, ?rect:FlxRect, ?matrix:FlxMatrix, ?includeFilters:Bool = true, ?useCachedBounds:Bool = false):FlxRect
+	override function getBounds(frameIndex:Int, ?rect:FlxRect, ?matrix:FlxMatrix, includeFilters:Bool = true, useCachedBounds:Bool = false):FlxRect
 	{
 		var bounds = super.getBounds(frameIndex, rect, matrix, includeFilters, useCachedBounds);
 
@@ -138,31 +132,7 @@ class MovieClipInstance extends SymbolInstance
 		if (_bakedFrames[frameIndex] != null)
 			return;
 
-		var scale = FlxPoint.get(1, 1);
-		var pixelFactor:Float = _filterQuality.getPixelFactor();
-		var qualityFactor:Float = _filterQuality.getQualityFactor();
-
-		for (filter in filters)
-		{
-			if (filter is BlurFilter)
-			{
-				var blur:BlurFilter = cast filter;
-				if (_filterQuality != FilterQuality.HIGH)
-				{
-					var qualityMult = FlxMath.remapToRange(blur.quality, 0, 3, 1, 3) * qualityFactor;
-					scale.x *= Math.max(((blur.blurX) / pixelFactor) * qualityMult, 1);
-					scale.y *= Math.max(((blur.blurY) / pixelFactor) * qualityMult, 1);
-				}
-			}
-		}
-
-		// TODO: double check this, i *think* this is applied later so its not necessary here
-		// scale.x /= Math.sqrt(matrix.a * matrix.a + matrix.b * matrix.b);
-		// scale.y /= Math.sqrt(matrix.c * matrix.c + matrix.d * matrix.d);
-
-		var bakedFrame:Null<AtlasInstance> = FilterRenderer.bakeFilters(this, frameIndex, filters, scale, _filterQuality);
-		scale.put();
-
+		var bakedFrame:Null<AtlasInstance> = FilterRenderer.bakeFilters(this, frameIndex, filters);
 		if (bakedFrame == null)
 			return;
 
@@ -177,17 +147,15 @@ class MovieClipInstance extends SymbolInstance
 			_dirty = false;
 	}
 
-	override function draw(camera:FlxCamera, index:Int, frameIndex:Int, parentMatrix:FlxMatrix, ?transform:ColorTransform, ?blend:BlendMode,
-			?antialiasing:Bool, ?shader:FlxShader):Void
+	override function draw(camera:FlxCamera, index:Int, frameIndex:Int, parentMatrix:FlxMatrix, ?command:AnimateDrawCommand):Void
 	{
 		if (_dirty)
 			_bakeFilters(_filters, getFrameIndex(index, frameIndex));
 
-		super.draw(camera, index, frameIndex, parentMatrix, transform, blend, antialiasing, shader);
+		super.draw(camera, index, frameIndex, parentMatrix, command);
 	}
 
-	override function _drawTimeline(camera:FlxCamera, index:Int, frameIndex:Int, parentMatrix:FlxMatrix, transform:Null<ColorTransform>,
-			blend:Null<BlendMode>, antialiasing:Null<Bool>, shader:Null<FlxShader>)
+	override function _drawTimeline(camera:FlxCamera, index:Int, frameIndex:Int, parentMatrix:FlxMatrix, ?command:AnimateDrawCommand):Void
 	{
 		if (_bakedFrames != null)
 		{
@@ -197,12 +165,12 @@ class MovieClipInstance extends SymbolInstance
 			if (bakedFrame != null)
 			{
 				if (bakedFrame.visible)
-					bakedFrame.draw(camera, 0, 0, parentMatrix, transform, blend, antialiasing, shader);
+					bakedFrame.draw(camera, 0, 0, parentMatrix, command);
 				return;
 			}
 		}
 
-		super._drawTimeline(camera, index, frameIndex, parentMatrix, transform, blend, antialiasing, shader);
+		super._drawTimeline(camera, index, frameIndex, parentMatrix, command);
 	}
 
 	override function destroy():Void

@@ -4,12 +4,8 @@ import animate.FlxAnimateJson.TextFieldInstanceJson;
 import flixel.FlxCamera;
 import flixel.FlxG;
 import flixel.math.FlxMatrix;
-import flixel.system.FlxAssets.FlxShader;
-import flixel.text.FlxText;
 import flixel.util.FlxColor;
 import flixel.util.FlxDestroyUtil;
-import openfl.display.BlendMode;
-import openfl.geom.ColorTransform;
 import openfl.text.TextField;
 import openfl.text.TextFormat;
 import openfl.text.TextFormatAlign;
@@ -33,7 +29,7 @@ class TextFieldInstance extends AtlasInstance
 		super(null, null, frame);
 
 		this.elementType = TEXT;
-		this.matrix = data.MX.toMatrix();
+		this.matrix = data.MX.toMatrix(this.matrix);
 
 		field = new TextField();
 		format = new TextFormat();
@@ -66,8 +62,11 @@ class TextFieldInstance extends AtlasInstance
 		redraw();
 	}
 
-	inline function redraw()
+	function redraw():Void
 	{
+		if (!_dirty)
+			return;
+
 		if (frame != null)
 		{
 			FlxG.bitmap.remove(frame.parent);
@@ -103,8 +102,7 @@ class TextFieldInstance extends AtlasInstance
 		return text;
 	}
 
-	override function draw(camera:FlxCamera, index:Int, frameIndex:Int, parentMatrix:FlxMatrix, ?transform:ColorTransform, ?blend:BlendMode,
-			?antialiasing:Bool, ?shader:FlxShader)
+	override function draw(camera:FlxCamera, index:Int, frameIndex:Int, parentMatrix:FlxMatrix, ?command:AnimateDrawCommand):Void
 	{
 		if (_dirty)
 		{
@@ -112,10 +110,10 @@ class TextFieldInstance extends AtlasInstance
 			_dirty = false;
 		}
 
-		super.draw(camera, index, frameIndex, parentMatrix, transform, blend, antialiasing, shader);
+		super.draw(camera, index, frameIndex, parentMatrix, command);
 	}
 
-	override function destroy()
+	override function destroy():Void
 	{
 		super.destroy();
 		field = null;

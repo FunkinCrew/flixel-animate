@@ -7,11 +7,8 @@ import flixel.math.FlxMath;
 import flixel.math.FlxMatrix;
 import flixel.math.FlxPoint;
 import flixel.math.FlxRect;
-import flixel.system.FlxAssets.FlxShader;
 import flixel.util.FlxDestroyUtil;
 import flixel.util.FlxSignal;
-import openfl.display.BlendMode;
-import openfl.geom.ColorTransform;
 
 using flixel.util.FlxColorTransformUtil;
 
@@ -42,7 +39,7 @@ class ButtonInstance extends SymbolInstance
 		this._hitbox = FlxRect.get();
 	}
 
-	override function getBounds(frameIndex:Int, ?rect:FlxRect, ?matrix:FlxMatrix, ?includeFilters:Bool = true, ?useCachedBounds:Bool = false):FlxRect
+	override function getBounds(frameIndex:Int, ?rect:FlxRect, ?matrix:FlxMatrix, includeFilters:Bool = true, useCachedBounds:Bool = false):FlxRect
 	{
 		var boundsIndex = FlxMath.minInt(ButtonState.HIT, this.libraryItem.timeline.frameCount - 1);
 		var bounds = this.libraryItem.timeline.getBounds(boundsIndex, false, rect, this.matrix, false, useCachedBounds);
@@ -55,12 +52,11 @@ class ButtonInstance extends SymbolInstance
 		return FlxMath.minInt(curButtonState, this.libraryItem.timeline.frameCount - 1);
 	}
 
-	override function draw(camera:FlxCamera, index:Int, frameIndex:Int, parentMatrix:FlxMatrix, ?transform:ColorTransform, ?blend:BlendMode,
-			?antialiasing:Bool, ?shader:FlxShader)
+	override function draw(camera:FlxCamera, index:Int, frameIndex:Int, parentMatrix:FlxMatrix, ?command:AnimateDrawCommand)
 	{
 		updateButtonState(camera, parentMatrix);
 
-		super.draw(camera, index, frameIndex, parentMatrix, transform, blend, antialiasing, shader);
+		super.draw(camera, index, frameIndex, parentMatrix, command);
 
 		#if FLX_DEBUG
 		if (FlxG.debugger.drawDebug && FlxAnimate.drawDebugLimbs)

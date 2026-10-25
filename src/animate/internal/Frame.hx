@@ -1,25 +1,26 @@
 package animate.internal;
 
+import animate.FlxAnimateFrames.FilterQuality;
 import animate.FlxAnimateJson.FrameJson;
 import animate.internal.elements.AtlasInstance;
-import animate.internal.elements.ButtonInstance;
 import animate.internal.elements.Element;
 import animate.internal.elements.MovieClipInstance;
 import animate.internal.elements.SymbolInstance;
-import animate.internal.elements.TextFieldInstance;
-import animate.internal.filters.Blend;
 import flixel.FlxCamera;
 import flixel.FlxG;
+import flixel.math.FlxMath;
 import flixel.math.FlxMatrix;
 import flixel.math.FlxRect;
-import flixel.system.FlxAssets.FlxShader;
+import flixel.util.FlxColor;
 import flixel.util.FlxDestroyUtil;
 import openfl.display.BlendMode;
+import openfl.filters.BitmapFilter;
 import openfl.geom.ColorTransform;
 import openfl.media.Sound;
 import openfl.utils.Assets;
 
 using StringTools;
+using flixel.util.FlxColorTransformUtil;
 
 #if (flixel >= "5.3.0")
 import flixel.sound.FlxSound;
@@ -43,6 +44,15 @@ class Frame implements IFlxDestroyable
 	var _soundData:Null<Sound>;
 
 	public var blend:BlendMode;
+	public var isColored(default, null):Bool;
+
+	@:noCompletion
+	public var transform:ColorTransform;
+
+	@:noCompletion
+	public var _transform:ColorTransform;
+
+	public var tween:Tween;
 
 	public function new(?layer:Layer)
 	{
@@ -87,6 +97,35 @@ class Frame implements IFlxDestroyable
 	}
 
 	/**
+	 * Removes an ``Element`` object from the elements list of the frame.
+	 * If the frame is masked it will require a redraw.
+	 *
+	 * @param element Element object to remove from the frame. Won't do anything if it's not part of it.
+	 */
+	public function remove(element:Element)
+	{
+		if (elements.indexOf(element) == -1)
+			return;
+
+		element.parentFrame = null;
+		elements.remove(element);
+		setDirty();
+	}
+
+	/**
+	 * Changes the filters of the movieclip.
+	 * Requires the movieclip to be rebaked when called.
+	 *
+	 * @param filters An array with ``BitmapFilter`` objects to apply to the movieclip.
+	 */
+	public function setFilters(?filters:Array<BitmapFilter>):Void
+	{
+		this._filters = filters;
+		this._requireBake = (filters != null && filters.length > 0);
+		setDirty();
+	}
+
+	/**
 	 * Clears up the memory from the previously baked frames and
 	 * sets the frame ready for a new rebake of masks/filters.
 	 */
@@ -120,20 +159,12 @@ class Frame implements IFlxDestroyable
 	@:access(animate.internal.Layer)
 	public function convertToSymbol(fromIndex:Int, toIndex:Int, ?type:ElementType = GRAPHIC):SymbolInstance
 	{
-		var elements = this.elements.splice(fromIndex, toIndex - fromIndex);
-
 		var timeline = new animate.internal.Timeline(null, layer.timeline.parent, "tempSymbol");
-		var layer = new Layer(timeline);
+		var frame = timeline.addNewLayer().frames[0];
 
-		var frame = new Frame(layer);
+		var elements = this.elements.splice(fromIndex, toIndex - fromIndex);
 		for (element in elements)
 			frame.add(element);
-
-		layer.frames.push(frame);
-		layer.frameIndices.push(0);
-
-		timeline.layers.push(layer);
-		timeline.frameCount = layer.frameCount;
 
 		var item = new SymbolItem(timeline);
 		var instance = item.createInstance(type);
@@ -196,6 +227,37 @@ class Frame implements IFlxDestroyable
 		return rect;
 	}
 
+	public extern overload inline function setColorTransform(rMult:Float = 1, gMult:Float = 1, bMult:Float = 1, aMult:Float = 1, rOffset:Float = 0,
+			gOffset:Float = 0, bOffset:Float = 0, aOffset:Float = 0):Void
+	{
+		_setColorTransform(rMult, gMult, bMult, aMult, rOffset, gOffset, bOffset, aOffset);
+	}
+
+	public extern overload inline function setColorTransform(color:FlxColor):Void
+	{
+		_setColorTransform(color.redFloat, color.greenFloat, color.blueFloat, 1, 0, 0, 0, 0);
+	}
+
+	function _setColorTransform(rMult:Float, gMult:Float, bMult:Float, aMult:Float, rOffset:Float, gOffset:Float, bOffset:Float, aOffset:Float)
+	{
+		if (transform == null)
+			transform = new ColorTransform();
+		if (_transform == null)
+			_transform = new ColorTransform();
+
+		transform.redMultiplier = rMult;
+		transform.greenMultiplier = gMult;
+		transform.blueMultiplier = bMult;
+		transform.alphaMultiplier = aMult;
+
+		transform.redOffset = rOffset;
+		transform.greenOffset = gOffset;
+		transform.blueOffset = bOffset;
+		transform.alphaOffset = aOffset;
+
+		isColored = (transform.hasRGBAMultipliers() || transform.hasRGBAOffsets());
+	}
+
 	public inline function iterator()
 	{
 		return elements.iterator();
@@ -217,38 +279,28 @@ class Frame implements IFlxDestroyable
 		var e = frame.E;
 		if (e != null)
 		{
-			for (element in e)
+			for (elementJson in e)
 			{
-				var si = element.SI;
-				if (si != null)
-				{
-					this.elements.push(switch (si.ST)
-					{
-						case "B" | "button":
-							new ButtonInstance(si, parent, this);
-						case "MC" | "movieclip":
-							new MovieClipInstance(si, parent, this);
-						default:
-							new SymbolInstance(si, parent, this);
-					});
-				}
-				else
-				{
-					var asi = element.ASI;
-					if (asi != null)
-					{
-						this.elements.push(new AtlasInstance(asi, parent, this));
-					}
-					else
-					{
-						var tfi = element.TFI;
-						if (tfi != null)
-						{
-							this.elements.push(new TextFieldInstance(tfi, parent, this));
-						}
-					}
-				}
+				final element:Element = Element._fromJson(elementJson, parent, this);
+				if (element != null)
+					this.elements.push(element);
 			}
+		}
+
+		// Resolve and precache bitmap filters
+		var jsonFilters = frame.F;
+		if (jsonFilters != null && jsonFilters.length > 0)
+		{
+			var filters:Array<BitmapFilter> = [];
+			for (filter in jsonFilters)
+			{
+				var bmpFilter:Null<BitmapFilter> = filter.toBitmapFilter();
+				if (bmpFilter != null)
+					filters.push(bmpFilter);
+			}
+
+			this._filters = filters;
+			this._dirty = true;
 		}
 
 		#if FLX_SOUND_SYSTEM
@@ -266,37 +318,52 @@ class Frame implements IFlxDestroyable
 					var bytes = FlxAnimateAssets.getBytes(soundPath);
 					var buffer = lime.media.AudioBuffer.fromBytes(bytes);
 					_soundData = Sound.fromAudioBuffer(buffer);
-					sound = FlxG.sound.load(_soundData);
 				}
 				else
 				#end
 				{
 					_soundData = Assets.getSound(soundPath);
-					sound = FlxG.sound.load(_soundData);
 				}
+
+				#if (flixel >= "6.2.0")
+				sound = FlxG.sound.create(_soundData).setup();
+				#else
+				sound = FlxG.sound.load(_soundData);
+				#end
 			}
 		}
 		#end
+
+		var jsonTween = frame.TWN;
+		if (jsonTween != null)
+		{
+			tween = new Tween(this, jsonTween);
+		}
+
+		var jsonColor = frame.C;
+		if (jsonColor != null)
+		{
+			setColorTransform(jsonColor.RM, jsonColor.GM, jsonColor.BM, jsonColor.AM, jsonColor.RO, jsonColor.GO, jsonColor.BO, jsonColor.AO);
+		}
 	}
 
-	@:allow(animate.internal.Layer)
 	var _dirty:Bool = false;
-
-	@:allow(animate.internal.Layer)
 	var _requireBake:Bool = false;
+	var _filters:Array<BitmapFilter> = null;
+	var _filterQuality:FilterQuality = FilterQuality.MEDIUM;
 
 	var _bakedFrames:BakedFramesVector;
 	var _bakedIndices:Array<Int>;
 
 	function _bakeFrame(frameIndex:Int):Void
 	{
-		if (layer.parentLayer == null)
+		if (layer.parentLayer == null && (_filters == null || _filters.length == 0))
 		{
 			_dirty = false;
 			return;
 		}
 
-		// Prepare vector to store masks
+		// Prepare vector to store baked frames
 		if (_bakedFrames == null)
 			_bakedFrames = new BakedFramesVector(duration);
 
@@ -304,27 +371,48 @@ class Frame implements IFlxDestroyable
 		// This is used as a way to save on the necessary bitmaps to render a mask
 		if (_bakedIndices == null)
 		{
-			var isSimpleRender:Bool = true;
-			for (element in elements)
+			if (this.isSimpleRender())
 			{
-				if (element is AtlasInstance)
-					continue;
-
-				if (!element.toSymbolInstance().isSimpleSymbol())
+				_bakedIndices = [];
+				for (i in 0...duration)
 				{
-					isSimpleRender = false;
-					break;
+					// only render the neccesary frame indices
+					if (layer.parentLayer != null)
+					{
+						var frame = layer.parentLayer.getFrameAtIndex(this.index + i);
+						if (frame != null)
+						{
+							// if (frame.isSimpleRender())
+							// {
+							//	_bakedIndices.push(this.index - frame.index); // TODO: double check and fix this
+							// }
+							// else
+							// {
+							_bakedIndices.push(i);
+							// }
+						}
+						else
+						{
+							_bakedIndices.push(-1);
+						}
+					}
+					else
+					{
+						_bakedIndices.push(0);
+					}
 				}
 			}
-
-			_bakedIndices = isSimpleRender ? [for (i in 0...duration) 0] : [for (i in 0...duration) i];
+			else
+			{
+				_bakedIndices = [for (i in 0...duration) i];
+			}
 		}
 
 		frameIndex = _bakedIndices[frameIndex];
-		if (_bakedFrames[frameIndex] != null)
+		if (frameIndex == -1 || _bakedFrames[frameIndex] != null)
 			return;
 
-		var bakedFrame:Null<AtlasInstance> = FilterRenderer.maskFrame(this, frameIndex + this.index, layer);
+		var bakedFrame:Null<AtlasInstance> = FilterRenderer.bakeFrame(this, frameIndex + this.index, layer);
 		if (bakedFrame == null)
 			return;
 
@@ -337,6 +425,19 @@ class Frame implements IFlxDestroyable
 		// All frames have been baked
 		if (_dirty && _bakedFrames.isFull())
 			_dirty = false;
+	}
+
+	private function isSimpleRender():Bool
+	{
+		for (element in elements)
+		{
+			if (element is SymbolInstance)
+			{
+				if (!element.toSymbolInstance().isSimpleSymbol())
+					return false;
+			}
+		}
+		return true;
 	}
 
 	@:allow(animate.internal.Timeline)
@@ -383,14 +484,16 @@ class Frame implements IFlxDestroyable
 
 	@:allow(animate.internal.elements.SymbolInstance)
 	@:allow(animate.internal.FilterRenderer)
+	@:allow(animate.internal.Timeline)
 	@:allow(animate.internal.filters.Blend)
 	@:allow(animate.internal.elements.AtlasInstance)
+	@:allow(animate.internal.AnimateDrawCommand)
 	private static var __isDirtyCall:Bool = false;
 
-	public function draw(camera:FlxCamera, currentFrame:Int, parentMatrix:FlxMatrix, ?transform:ColorTransform, ?blend:BlendMode, ?antialiasing:Bool,
-			?shader:FlxShader):Void
+	public function draw(camera:FlxCamera, currentFrame:Int, parentMatrix:FlxMatrix, ?command:AnimateDrawCommand)
 	{
-		var blend = Blend.resolve(this.blend, blend);
+		if (command != null)
+			command.prepareFrameCommand(this);
 
 		if (_dirty)
 		{
@@ -400,26 +503,32 @@ class Frame implements IFlxDestroyable
 
 		if (_bakedFrames != null)
 		{
-			var bakedFrame = _bakedFrames[_bakedIndices[currentFrame - this.index]];
+			var bakedIndex = _bakedIndices[currentFrame - this.index];
+			if (bakedIndex == -1)
+				return;
+
+			var bakedFrame = _bakedFrames[bakedIndex];
 			if (bakedFrame != null)
 			{
 				if (bakedFrame.visible)
-					bakedFrame.draw(camera, currentFrame, this.index, parentMatrix, transform, blend, antialiasing, shader);
+					bakedFrame.draw(camera, currentFrame, this.index, parentMatrix, command);
 				return;
 			}
 		}
 
-		_drawElements(camera, currentFrame, parentMatrix, transform, blend, antialiasing, shader);
+		if (tween != null)
+			tween.drawTransform(camera, currentFrame, parentMatrix, command);
+		else
+			_drawElements(camera, currentFrame, parentMatrix, command);
 	}
 
 	@:allow(animate.internal.FilterRenderer)
-	inline function _drawElements(camera:FlxCamera, currentFrame:Int, parentMatrix:FlxMatrix, ?transform:ColorTransform, ?blend:BlendMode, ?antialiasing:Bool,
-			?shader:FlxShader)
+	inline function _drawElements(camera:FlxCamera, currentFrame:Int, parentMatrix:FlxMatrix, ?command:AnimateDrawCommand)
 	{
 		for (element in elements)
 		{
 			if (element.visible)
-				element.draw(camera, currentFrame, this.index, parentMatrix, transform, blend, antialiasing, shader);
+				element.draw(camera, currentFrame, this.index, parentMatrix, command);
 		}
 	}
 

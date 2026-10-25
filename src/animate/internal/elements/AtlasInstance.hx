@@ -1,6 +1,7 @@
 package animate.internal.elements;
 
 import animate.FlxAnimateJson;
+import animate.internal.AnimateDrawCommand;
 import animate.internal.elements.Element;
 import animate.internal.filters.Blend;
 import flixel.FlxCamera;
@@ -37,14 +38,14 @@ class AtlasInstance extends AnimateElement<AtlasInstanceJson>
 	{
 		super(data, parent, frame);
 
-		this.tileMatrix = new FlxMatrix();
+		this.tileMatrix = FilterRenderer.matrixPool.get();
 		this.elementType = ATLAS;
 
 		if (data != null)
 		{
 			this.frame = parent.getByName(data.N);
 			this.sourceFrame = this.frame;
-			this.matrix = data.MX.toMatrix();
+			this.matrix = data.MX.toMatrix(this.matrix);
 
 			#if flash
 			// FlxFrame.paint doesnt work for rotated frames lol
@@ -88,12 +89,13 @@ class AtlasInstance extends AnimateElement<AtlasInstanceJson>
 	override function destroy():Void
 	{
 		super.destroy();
+		FilterRenderer.matrixPool.release(tileMatrix);
+		tileMatrix = null;
 		frame = null;
 		sourceFrame = null;
 	}
 
-	override function draw(camera:FlxCamera, index:Int, frameIndex:Int, parentMatrix:FlxMatrix, ?transform:ColorTransform, ?blend:BlendMode,
-			?antialiasing:Bool, ?shader:FlxShader):Void
+	override function draw(camera:FlxCamera, index:Int, frameIndex:Int, parentMatrix:FlxMatrix, ?command:AnimateDrawCommand):Void
 	{
 		if (frame == null || frame.frame == null || frame.parent == null || frame.parent.bitmap == null) // should add a warn here
 			return;
@@ -102,19 +104,21 @@ class AtlasInstance extends AnimateElement<AtlasInstanceJson>
 		_mat.concat(matrix);
 		_mat.concat(parentMatrix);
 
-		if (!isOnScreen(camera, _mat))
-			return;
-
 		if (camera.pixelPerfectRender)
 		{
 			_mat.tx = Math.floor(_mat.tx);
 			_mat.ty = Math.floor(_mat.ty);
 		}
 
+		if (!isOnScreen(camera, _mat))
+			return;
+
+		drawCommand.prepareCommand(command, this);
+
 		#if flash
-		drawPixelsFlash(camera, _mat, transform, blend, antialiasing);
+		drawPixelsFlash(camera, _mat, drawCommand.transform, drawCommand.blend, drawCommand.antialiasing);
 		#else
-		camera.drawPixels(frame, null, _mat, transform, blend, antialiasing, shader);
+		camera.drawPixels(frame, null, _mat, drawCommand.transform, drawCommand.blend, drawCommand.antialiasing, drawCommand.shader);
 		#end
 
 		#if FLX_DEBUG
@@ -153,10 +157,12 @@ class AtlasInstance extends AnimateElement<AtlasInstanceJson>
 
 		#if (flixel >= "5.2.0")
 		// manually inlining this because we dont need the bounds.putWeak part
-		return (bounds.right > camera.viewMarginLeft)
-			&& (bounds.x < camera.viewMarginRight)
-			&& (bounds.bottom > camera.viewMarginTop)
-			&& (bounds.y < camera.viewMarginBottom);
+		if (bounds.right > camera.viewMarginLeft)
+			if (bounds.x < camera.viewMarginRight)
+				if (bounds.bottom > camera.viewMarginTop)
+					if (bounds.y < camera.viewMarginBottom)
+						return true;
+		return false;
 		#else
 		var point = FlxPoint.get(bounds.x, bounds.y);
 		var result = camera.containsPoint(point, bounds.width, bounds.height);
@@ -165,7 +171,7 @@ class AtlasInstance extends AnimateElement<AtlasInstanceJson>
 		#end
 	}
 
-	override function getBounds(frameIndex:Int, ?rect:FlxRect, ?matrix:FlxMatrix, ?includeFilters:Bool = true, ?useCachedBounds:Bool = false):FlxRect
+	override function getBounds(frameIndex:Int, ?rect:FlxRect, ?matrix:FlxMatrix, includeFilters:Bool = true, useCachedBounds:Bool = false):FlxRect
 	{
 		rect = super.getBounds(0, rect);
 
@@ -180,6 +186,7 @@ class AtlasInstance extends AnimateElement<AtlasInstanceJson>
 	}
 
 	#if (FLX_DEBUG && flash)
+	@:allow(animate.internal.elements.SymbolInstance)
 	static final _fillRect = new openfl.geom.Rectangle();
 	#end
 
@@ -190,7 +197,7 @@ class AtlasInstance extends AnimateElement<AtlasInstanceJson>
 		var cBounds = camera.transformRect(bounds.copyTo(FlxRect.get()));
 		FlxG.signals.postDraw.addOnce(() ->
 		{
-			var buffer = FlxG.camera.buffer;
+			var buffer = camera.buffer;
 			_fillRect.setTo(cBounds.x, cBounds.y, cBounds.width, 1);
 			buffer.fillRect(_fillRect, color);
 			_fillRect.setTo(cBounds.x, cBounds.y + cBounds.height - 1, cBounds.width, 1);
@@ -230,15 +237,6 @@ class AtlasInstance extends AnimateElement<AtlasInstanceJson>
 	}
 }
 
+@:deprecated
 @:noCompletion
-class BakedInstance extends AtlasInstance
-{
-	public var blend:BlendMode = null;
-
-	override function draw(camera:FlxCamera, index:Int, frameIndex:Int, parentMatrix:FlxMatrix, ?transform:ColorTransform, ?blend:BlendMode,
-			?antialiasing:Bool, ?shader:FlxShader)
-	{
-		var b = Blend.resolve(this.blend, blend);
-		super.draw(camera, index, frameIndex, parentMatrix, transform, b, antialiasing, shader);
-	}
-}
+typedef BakedInstance = AtlasInstance;

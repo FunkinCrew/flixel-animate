@@ -10,7 +10,7 @@ import animate.internal.elements.SymbolInstance;
 import flixel.FlxG;
 import flixel.graphics.FlxGraphic;
 import flixel.graphics.frames.FlxAtlasFrames;
-import flixel.graphics.frames.FlxFramesCollection.FlxFrameCollectionType;
+import flixel.math.FlxMath;
 import flixel.math.FlxMatrix;
 import flixel.math.FlxPoint;
 import flixel.math.FlxRect;
@@ -20,6 +20,8 @@ import flixel.util.FlxDestroyUtil;
 import haxe.Json;
 import haxe.ds.Vector;
 import haxe.io.Path;
+import openfl.filters.BitmapFilter;
+import openfl.filters.BlurFilter;
 
 using StringTools;
 
@@ -48,7 +50,8 @@ typedef FlxAnimateSettings =
 	?swfMode:Bool,
 	?cacheOnLoad:Bool,
 	?filterQuality:FilterQuality,
-	?onSymbolCreate:SymbolItem->Void
+	?onSymbolCreate:SymbolItem->Void,
+	?applyInterpolation:Bool
 }
 
 /**
@@ -57,15 +60,11 @@ typedef FlxAnimateSettings =
  * Note that this engine does **NOT** convert texture atlases into spritesheets, therefore trying to get
  * frames from a ``FlxAnimateFrames`` will result in getting the limb frames of the spritemap.
  *
- * If you need an actual frame of the texture atlas animation I recommend manually creating it using
- * ``framePixels`` on a ``FlxAnimate``. Though it may cause performance issues, so use with precaution.
+ * If you need an actual frame of the texture atlas animation I recommend using ``useRenderTexture``
+ * on a ``FlxAnimate``. Though it may cause performance issues, so use with precaution.
  */
 class FlxAnimateFrames extends FlxAtlasFrames
 {
-	// TODO:
-	// public var instance:SymbolInstance;
-	// public var stageInstance:SymbolInstanceJson;
-
 	/**
 	 * The main ``Timeline`` that the Texture Atlas was exported from.
 	 */
@@ -84,10 +83,17 @@ class FlxAnimateFrames extends FlxAtlasFrames
 	public var stageColor:FlxColor;
 
 	/**
+	 * Symbol instance of the Texture Atlas on the Animate stage.
+	 * Null if not exported from an instanced symbol.
+	 */
+	public var stageInstance:Null<SymbolInstance>;
+
+	/**
 	 * Matrix of the Texture Atlas on the Animate stage.
 	 * Defaults to an empty matrix if not exported from an instanced symbol.
+	 * Shortcut for ``library.stageInstance.matrix``
 	 */
-	public var matrix:FlxMatrix; // TODO: to be replaced with library.instance
+	public var matrix(get, never):FlxMatrix;
 
 	/**
 	 * Default frame rate that the Texture Atlas was exported from.
@@ -159,17 +165,9 @@ class FlxAnimateFrames extends FlxAtlasFrames
 		if (atlasInstance != null)
 		{
 			var timeline = new Timeline(null, this, name);
-			var layer = new Layer(timeline);
-			var frame = new Frame(layer);
-			frame.elements.push(new AtlasInstance(atlasInstance, this, frame));
-
-			layer.frames.push(frame);
-			@:privateAccess layer.frameIndices.push(0);
-			timeline.layers.push(layer);
-			timeline.frameCount = 1;
-
-			@:privateAccess
-			timeline._bounds = timeline.getWholeBounds(false, timeline._bounds);
+			var layer = timeline.addNewLayer("Layer 1", 1);
+			layer.frames[0].elements.push(new AtlasInstance(atlasInstance, this, layer.frames[0]));
+			timeline.refresh();
 
 			return setSymbol(name, new SymbolItem(timeline));
 		}
@@ -302,7 +300,12 @@ class FlxAnimateFrames extends FlxAtlasFrames
 
 	static function listWithFilter(path:String, filter:String->Bool, includeSubDirectories:Bool = false)
 	{
-		var list = FlxAnimateAssets.list(path, null, path.substring(0, path.indexOf(':')), includeSubDirectories);
+		var library = "";
+		var sepIndex = path.indexOf(':');
+		if (path.charAt(sepIndex + 1) != '/') // absolute paths fix
+			library = path.substring(0, sepIndex);
+
+		var list = FlxAnimateAssets.list(path, null, library, includeSubDirectories);
 		return list.filter(filter);
 	}
 
@@ -448,8 +451,9 @@ class FlxAnimateFrames extends FlxAtlasFrames
 		frames.stageColor = FlxColor.fromString(metadata.BGC);
 
 		// stage instance of the main symbol
-		var stageInstance:Null<SymbolInstanceJson> = animData.AN.STI;
-		frames.matrix = (stageInstance != null) ? stageInstance.MX.toMatrix() : new FlxMatrix();
+		var stageInstance = animData.AN.STI;
+		if (stageInstance != null)
+			frames.stageInstance = SymbolInstance._fromJson(stageInstance, frames);
 
 		// clear the temp data crap
 		frames._symbolDictionary = null;
@@ -613,9 +617,17 @@ class FlxAnimateFrames extends FlxAtlasFrames
 
 		stageRect = FlxDestroyUtil.put(stageRect);
 		timeline = FlxDestroyUtil.destroy(timeline);
+		stageInstance = FlxDestroyUtil.destroy(stageInstance);
+		_stageMatrix = null;
 		checkedDirtySymbols = null;
 		dictionary = null;
-		matrix = null;
+	}
+
+	var _stageMatrix:FlxMatrix;
+
+	function get_matrix():FlxMatrix
+	{
+		return stageInstance?.matrix ?? (_stageMatrix ??= new FlxMatrix());
 	}
 }
 
@@ -719,5 +731,28 @@ enum abstract FilterQuality(Int) to Int
 			case FilterQuality.RUDY: 8.0;
 			default: 1.0;
 		}
+	}
+
+	public function getFiltersScale(filters:Array<BitmapFilter>)
+	{
+		var scale = FlxPoint.get(1, 1);
+		var pixelFactor:Float = getPixelFactor();
+		var qualityFactor:Float = getQualityFactor();
+
+		for (filter in filters)
+		{
+			if (filter is BlurFilter)
+			{
+				var blur:BlurFilter = cast filter;
+				if (this != FilterQuality.HIGH)
+				{
+					var qualityMult = FlxMath.remapToRange(blur.quality, 0, 3, 1, 3) * qualityFactor;
+					scale.x *= Math.max(((blur.blurX) / pixelFactor) * qualityMult, 1);
+					scale.y *= Math.max(((blur.blurY) / pixelFactor) * qualityMult, 1);
+				}
+			}
+		}
+
+		return scale;
 	}
 }

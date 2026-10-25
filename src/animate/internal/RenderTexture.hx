@@ -2,16 +2,22 @@ package animate.internal;
 
 import flixel.FlxCamera;
 import flixel.FlxG;
+import flixel.FlxSprite;
 import flixel.graphics.FlxGraphic;
+import flixel.graphics.frames.FlxFrame;
 import flixel.math.FlxMatrix;
+import flixel.math.FlxRect;
+import flixel.system.FlxAssets.FlxShader;
 import flixel.util.FlxDestroyUtil;
 import openfl.Lib;
 import openfl.display.BitmapData;
+import openfl.display.BlendMode;
 import openfl.display.OpenGLRenderer;
 import openfl.display3D.Context3D;
 import openfl.display3D.textures.RectangleTexture;
 import openfl.geom.ColorTransform;
 import openfl.geom.Matrix;
+import openfl.display3D.Context3DBlendTarget;
 
 @:access(flixel.FlxCamera)
 @:access(flixel.graphics.FlxGraphic)
@@ -24,13 +30,14 @@ import openfl.geom.Matrix;
 class RenderTexture implements IFlxDestroyable
 {
 	public var antialiasing:Bool = false;
-	public var graphic(default, null):FlxGraphic;
+	public var graphic:FlxGraphic;
 
 	var _renderer:OpenGLRenderer;
 	var _bitmaps:Map<String, BitmapData>;
 	var _currentBitmap:BitmapData;
 	var _camera:FlxCamera;
 	var _matrix:FlxMatrix;
+	var _frame:FlxFrame;
 
 	public function new(width:Int, height:Int):Void
 	{
@@ -40,9 +47,32 @@ class RenderTexture implements IFlxDestroyable
 
 		_bitmaps = [];
 		_camera = new FlxCamera();
-		_matrix = new FlxMatrix();
+		_matrix = FilterRenderer.matrixPool.get();
 
 		init(width, height);
+	}
+
+	public function draw(?parent:FlxSprite, camera:FlxCamera, matrix:FlxMatrix, ?colorTransform:ColorTransform, ?blend:BlendMode, ?smoothing:Bool,
+			?shader:FlxShader, ?blendTarget:Context3DBlendTarget):Void
+	{
+		var frame:FlxFrame = graphic.imageFrame.frame;
+
+		if (parent != null)
+		{
+			if (parent.clipRect != null)
+			{
+				if (parent.clipRect.isEmpty) // no need to render shit
+					return;
+
+				frame = frame.clipTo(parent.clipRect, _frame);
+			}
+		}
+
+		_matrix.identity();
+		frame.prepareMatrix(_matrix);
+		_matrix.concat(matrix);
+
+		camera.drawPixels(frame, graphic.bitmap, _matrix, colorTransform, blend, smoothing, shader, blendTarget);
 	}
 
 	public function destroy():Void
@@ -61,6 +91,8 @@ class RenderTexture implements IFlxDestroyable
 		_currentBitmap = null;
 
 		_camera = FlxDestroyUtil.destroy(_camera);
+
+		FilterRenderer.matrixPool.release(_matrix);
 		_matrix = null;
 
 		graphic = FlxDestroyUtil.destroy(graphic);
@@ -70,10 +102,10 @@ class RenderTexture implements IFlxDestroyable
 	 * Initializes the render texture internal data to be used for rendering.
 	 * This function **MUST** be called before using ``RenderTexture.render`` if you plan on dynamically
 	 * changing the size of the texture from it's initial resolution.
-	 * 
+	 *
 	 * @param width New width of the texture.
 	 * @param height New height of the texture.
-	 * 
+	 *
 	 */
 	public function init(width:Int, height:Int):Void
 	{
@@ -88,16 +120,14 @@ class RenderTexture implements IFlxDestroyable
 		_prepareTexture(width, height);
 		graphic.bitmap = _currentBitmap;
 		graphic.imageFrame.frame.frame.set(0, 0, width, height);
-
-		_currentBitmap.__fillRect(_currentBitmap.rect, 0, true);
 	}
 
 	/**
 	 * Provides a way to add custom draw contents onto the internal camera of the texture.
 	 * Used a custom callback which supplies the ``FlxCamera`` to render to and a usable helper identity ``FlxMatrix``.
-	 * 
+	 *
 	 * @param drawCallback Custom callback with the internal ``FlxCamera`` and helper ``FlxMatrix``.
-	 * 
+	 *
 	 */
 	public function drawToCamera(drawCallback:FlxCamera->FlxMatrix->Void):Void
 	{
@@ -125,7 +155,24 @@ class RenderTexture implements IFlxDestroyable
 		_renderer.__worldColorTransform.__invert();
 		_renderer.__setRenderTarget(_currentBitmap);
 
-		_currentBitmap.__drawGL(_camera.canvas, _renderer);
+		var context = _renderer.__context3D;
+		var cacheRTT = context.__state.renderToTexture;
+		var cacheRTTDepthStencil = context.__state.renderToTextureDepthStencil;
+		var cacheRTTAntiAlias = context.__state.renderToTextureAntiAlias;
+		var cacheRTTSurfaceSelector = context.__state.renderToTextureSurfaceSelector;
+
+		context.setRenderToTexture(_currentBitmap.getTexture(context), true);
+		context.clear(0, 0, 0, 0);
+		_renderer.__render(_camera.canvas);
+
+		if (cacheRTT != null)
+		{
+			context.setRenderToTexture(cacheRTT, cacheRTTDepthStencil, cacheRTTAntiAlias, cacheRTTSurfaceSelector);
+		}
+		else
+		{
+			context.setRenderToBackBuffer();
+		}
 	}
 
 	function _prepareTexture(width:Int, height:Int):Void

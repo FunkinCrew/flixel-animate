@@ -4,15 +4,13 @@ import animate.FlxAnimateJson.TimelineJson;
 import animate.internal.elements.Element;
 import flixel.FlxCamera;
 import flixel.FlxG;
+import flixel.math.FlxMath;
 import flixel.math.FlxMatrix;
 import flixel.math.FlxPoint;
 import flixel.math.FlxRect;
-import flixel.sound.FlxSound;
 import flixel.system.FlxAssets.FlxShader;
 import flixel.util.FlxDestroyUtil;
 import flixel.util.typeLimit.OneOfTwo;
-import openfl.display.BlendMode;
-import openfl.geom.ColorTransform;
 
 using StringTools;
 
@@ -26,8 +24,11 @@ class Timeline implements IFlxDestroyable
 	public var layers:Array<Layer>;
 	public var name:String;
 	public var currentFrame:Int;
-	public var frameCount:Int;
 	public var parent(default, null):FlxAnimateFrames;
+
+	public var frameCount(get, null):Int;
+
+	var _dirtyFrameCount:Bool = false;
 
 	var _layerMap:Map<String, Layer>;
 	var _bounds:FlxRect;
@@ -44,6 +45,29 @@ class Timeline implements IFlxDestroyable
 
 		if (timeline != null)
 			_loadJson(timeline);
+	}
+
+	public function addNewLayer(?name:String, ?duration:Int)
+	{
+		var layer = new Layer(this);
+		layer.name = name ?? "Layer_" + (layers.length + 1);
+
+		var keyframe = new Frame(layer);
+		keyframe.index = 0;
+		keyframe.duration = FlxMath.maxInt(duration ?? this.frameCount, 1);
+
+		@:privateAccess {
+			layer.frames.push(keyframe);
+			for (_ in 0...keyframe.duration)
+				layer.frameIndices.push(0);
+		}
+
+		_layerMap.set(layer.name, layer);
+		layers.push(layer);
+
+		_dirtyFrameCount = true;
+
+		return layer;
 	}
 
 	/**
@@ -316,17 +340,18 @@ class Timeline implements IFlxDestroyable
 	}
 
 	@:allow(animate.FlxAnimateController)
-	private function signalFrameChange(frameIndex:Int, animation:FlxAnimateController):Void
+	@:allow(animate.internal.elements.SymbolInstance)
+	private function signalFrameChange(index:Int, animation:FlxAnimateController):Void
 	{
 		for (layer in layers)
 		{
-			final frame:Null<Frame> = layer.getFrameAtIndex(frameIndex);
+			final frame:Null<Frame> = layer.getFrameAtIndex(index);
 			if (frame != null)
-				frame.signalFrameChange(frameIndex, animation);
+				frame.signalFrameChange(index, animation);
 		}
 	}
 
-	public function draw(camera:FlxCamera, parentMatrix:FlxMatrix, ?transform:ColorTransform, ?blend:BlendMode, ?antialiasing:Bool, ?shader:FlxShader)
+	public function draw(camera:FlxCamera, parentMatrix:FlxMatrix, ?command:AnimateDrawCommand)
 	{
 		var i = layers.length - 1;
 		while (i >= 0)
@@ -339,7 +364,7 @@ class Timeline implements IFlxDestroyable
 			if (frame == null)
 				continue;
 
-			frame.draw(camera, currentFrame, parentMatrix, transform, blend, antialiasing, shader);
+			frame.draw(camera, currentFrame, parentMatrix, command);
 		}
 	}
 
@@ -359,11 +384,15 @@ class Timeline implements IFlxDestroyable
 		{
 			var layer = layers[i];
 			layer._loadJson(layersJson[i], parent, i, layers);
-
-			if (layer.frameCount > frameCount)
-				frameCount = layer.frameCount;
 		}
 
+		refresh();
+	}
+
+	@:noCompletion
+	public function refresh():Void
+	{
+		_dirtyFrameCount = true;
 		_bounds = getWholeBounds(false, _bounds);
 	}
 
@@ -385,6 +414,21 @@ class Timeline implements IFlxDestroyable
 	public function toString():String
 	{
 		return '{name: $name, frameCount: $frameCount}';
+	}
+
+	function get_frameCount():Int
+	{
+		if (!_dirtyFrameCount)
+			return frameCount;
+
+		for (layer in layers)
+		{
+			if (layer.frameCount > frameCount)
+				frameCount = layer.frameCount;
+		}
+
+		_dirtyFrameCount = false;
+		return frameCount;
 	}
 
 	@:noCompletion
@@ -473,4 +517,6 @@ class Timeline implements IFlxDestroyable
 		rect.set(tx0 + m.tx, ty0 + m.ty, tx1 - tx0, ty1 - ty0);
 		return rect;
 	}
+
+	var drawCommand:AnimateDrawCommand = new AnimateDrawCommand();
 }

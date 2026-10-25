@@ -2,10 +2,12 @@ package animate;
 
 import animate.FlxAnimateController.FlxAnimateAnimation;
 import animate.FlxAnimateFrames.FlxAnimateSettings;
+import animate.internal.AnimateDrawCommand;
 import animate.internal.FilterRenderer;
 import animate.internal.Frame;
 import animate.internal.StageBG;
 import animate.internal.Timeline;
+import animate.internal.elements.SymbolInstance;
 import flixel.FlxCamera;
 import flixel.FlxG;
 import flixel.FlxSprite;
@@ -16,6 +18,7 @@ import flixel.math.FlxMatrix;
 import flixel.math.FlxPoint;
 import flixel.math.FlxRect;
 import flixel.system.FlxAssets.FlxGraphicAsset;
+import flixel.util.FlxColor;
 import flixel.util.FlxDestroyUtil;
 import haxe.io.Path;
 import openfl.display.BitmapData;
@@ -39,6 +42,11 @@ class FlxAnimate extends FlxSprite
 	 * Whether to draw the hitboxes of limbs in a Texture Atlas animation.
 	 */
 	public static var drawDebugLimbs:Bool = false;
+
+	/**
+	 * Whether to draw the pivot points of limbs in a Texture Atlas animation.
+	 */
+	public static var drawDebugPivot:Bool = false;
 
 	/**
 	 * Change the skew of your sprite's graphic.
@@ -120,6 +128,8 @@ class FlxAnimate extends FlxSprite
 	 */
 	public function new(?x:Float = 0, ?y:Float = 0, ?simpleGraphic:FlxGraphicAsset, ?settings:FlxAnimateSettings)
 	{
+		_drawCommand = new AnimateDrawCommand();
+
 		var loadedAnimateAtlas:Bool = false;
 		if (simpleGraphic != null && simpleGraphic is String)
 		{
@@ -128,6 +138,11 @@ class FlxAnimate extends FlxSprite
 		}
 
 		super(x, y, loadedAnimateAtlas ? null : simpleGraphic);
+
+		#if flash
+		// texture atlases are so complex that you should just render them normally on blit
+		useFramePixels = false;
+		#end
 
 		if (loadedAnimateAtlas)
 			frames = FlxAnimateFrames.fromAnimate(simpleGraphic, null, null, null, false, settings);
@@ -164,6 +179,8 @@ class FlxAnimate extends FlxSprite
 		return resultFrames;
 	}
 
+	var _drawCommand:AnimateDrawCommand;
+
 	override function draw():Void
 	{
 		if (!isAnimate)
@@ -198,7 +215,7 @@ class FlxAnimate extends FlxSprite
 		#if flash
 		return false;
 		#else
-		return isAnimate && useRenderTexture && (alpha != 1 || shader != null || (blend != null && blend != NORMAL));
+		return isAnimate && useRenderTexture && (alpha != 1 || shader != null || (blend != null && blend != NORMAL) || clipRect != null);
 		#end
 	}
 
@@ -251,35 +268,57 @@ class FlxAnimate extends FlxSprite
 		if (renderStage)
 			drawStage(camera);
 
+		final command = _drawCommand;
+		command.parentSprite = this;
+		command.transform = colorTransform;
+		command.blend = blend;
+		command.antialiasing = antialiasing;
+		command.shader = shader;
+		command.onSymbolDraw = onSymbolDraw;
+
 		timeline.currentFrame = animation.frameIndex;
 
 		#if !flash
 		if (willUseRenderTexture)
 		{
-			if (_renderTexture == null)
-				_renderTexture = new RenderTexture(Math.ceil(bounds.width), Math.ceil(bounds.height));
-
-			if (_renderTextureDirty)
-			{
-				_renderTexture.init(Math.ceil(bounds.width), Math.ceil(bounds.height));
-				_renderTexture.drawToCamera((camera, matrix) ->
-				{
-					matrix.translate(-bounds.x, -bounds.y);
-					timeline.draw(camera, matrix, null, null, antialiasing, null);
-				});
-				_renderTexture.render();
-
-				_renderTextureDirty = false;
-			}
-
-			camera.drawPixels(_renderTexture.graphic.imageFrame.frame, framePixels, matrix, colorTransform, blend, antialiasing, shader, blendTarget);
+			setupRenderTexture(camera, bounds, command, matrix);
+			drawRenderTexture(camera, matrix);
 		}
 		else
 		#end
 		{
-			timeline.draw(camera, matrix, colorTransform, blend, antialiasing, shader);
+			timeline.draw(camera, matrix, command);
 		}
 	}
+
+	function setupRenderTexture(camera:FlxCamera, bounds:FlxRect, ?command:AnimateDrawCommand, matrix:FlxMatrix):Void
+	{
+		if (_renderTexture == null)
+			_renderTexture = new RenderTexture(Math.ceil(bounds.width), Math.ceil(bounds.height));
+
+		if (_renderTextureDirty)
+		{
+			command.blend = NORMAL;
+			command.shader = null;
+			command.transform = null;
+
+			_renderTexture.init(Math.ceil(bounds.width), Math.ceil(bounds.height));
+			_renderTexture.drawToCamera((camera, matrix) ->
+			{
+				matrix.translate(-bounds.x, -bounds.y);
+				timeline.draw(camera, matrix, command);
+			});
+			_renderTexture.render();
+			_renderTextureDirty = false;
+		}
+	}
+
+	function drawRenderTexture(camera:FlxCamera, matrix:FlxMatrix):Void
+	{
+		_renderTexture.draw(this, camera, matrix, colorTransform, blend, antialiasing, shader, blendTarget);
+	}
+
+	public var onSymbolDraw:Null<(symbol:SymbolInstance, command:AnimateDrawCommand) -> Void>;
 
 	function prepareAnimateMatrix(matrix:FlxMatrix, camera:FlxCamera, bounds:FlxRect):Void
 	{
@@ -394,6 +433,19 @@ class FlxAnimate extends FlxSprite
 		return v;
 	}
 
+	override function set_clipRect(rect:FlxRect):FlxRect
+	{
+		if (!isAnimate)
+			return super.set_clipRect(rect);
+
+		if (rect != null)
+			clipRect = rect.round();
+		else
+			clipRect = null;
+
+		return rect;
+	}
+
 	#if (flixel >= "5.4.0")
 	override function get_numFrames():Int
 	{
@@ -442,7 +494,7 @@ class FlxAnimate extends FlxSprite
 			framePixels = FilterRenderer.getBitmap((cam, m) ->
 			{
 				m.concat(mat);
-				timeline.draw(cam, m, null, NORMAL, true, null);
+				timeline.draw(cam, m);
 			}, bounds, false);
 			#else
 			framePixels = FilterRenderer.renderToBitmap((camera:FlxCamera, matrix:FlxMatrix) ->
@@ -455,7 +507,7 @@ class FlxAnimate extends FlxSprite
 				camera.height = Math.ceil(bounds.height);
 
 				timeline.currentFrame = animation.frameIndex;
-				timeline.draw(camera, matrix, null, NORMAL, true, null);
+				timeline.draw(camera, matrix);
 				camera.render();
 
 				if (camera.canvas.graphics.__bounds != null)
@@ -490,11 +542,9 @@ class FlxAnimate extends FlxSprite
 
 		if (isAnimate && renderStage)
 		{
-			var stageRect = library.stageRect;
-			rect.x = -timeline._bounds.x - (stageRect.width * 0.5);
-			rect.y = -timeline._bounds.y - (stageRect.height * 0.5);
-			rect.width = Math.max(rect.width, stageRect.width);
-			rect.height = Math.max(rect.height, stageRect.height);
+			final stageRect = this.library.stageRect;
+			final stageMatrix = this.library.matrix;
+			rect.union(FlxRect.weak(-timeline._bounds.x - stageMatrix.tx, -timeline._bounds.y - stageMatrix.ty, stageRect.width, stageRect.height));
 		}
 
 		Timeline.applyMatrixToRect(rect, matrix);

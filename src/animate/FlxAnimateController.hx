@@ -1,6 +1,7 @@
 package animate;
 
 import animate.internal.Timeline;
+import animate.internal.elements.Element;
 import flixel.FlxG;
 import flixel.animation.FlxAnimation;
 import flixel.animation.FlxAnimationController;
@@ -257,6 +258,79 @@ class FlxAnimateController extends FlxAnimationController
 	}
 
 	/**
+	 * Adds a new animation to the sprite, requires to be loaded with a Texture Atlas.
+	 *
+	 * @param name 			What this animation should be called (e.g. `"run"`).
+	 * @param element 		``Element`` object used to add the animation from.
+	 * @param frameRate 	The speed in frames per second that the animation should play at (e.g. `40` fps), leave ``null`` to use the default framerate.
+	 * @param looped 		Whether or not the animation is looped or just plays once.
+	 * @param flipX 		Whether the frames should be flipped horizontally.
+	 * @param flipY 		Whether the frames should be flipped vertically.
+	 */
+	public function addByElement(name:String, element:Element, ?frameRate:Float, ?looped:Bool = true, ?flipX:Bool, ?flipY:Bool):Void
+	{
+		if (!hasAnimateAtlas)
+		{
+			FlxG.log.warn('Sprite is not loaded with a texture atlas.');
+			return;
+		}
+
+		var elementLength:Int = switch (element.elementType)
+		{
+			case ATLAS | TEXT: 1;
+			default: element.toSymbolInstance().libraryItem.timeline.frameCount;
+		}
+
+		var timeline = new Timeline(null, _animate.library, "_element_");
+		var keyframe = timeline.addNewLayer("", elementLength).getFrameAtIndex(0);
+		keyframe.add(element);
+		timeline.refresh();
+
+		frameRate ??= getDefaultFramerate();
+
+		var anim = new FlxAnimateAnimation(this, name, [for (i in 0...timeline.frameCount) i], frameRate, looped, flipX, flipY);
+		anim.timeline = timeline;
+		_animations.set(name, anim);
+	}
+
+	/**
+	 * Adds a new animation to the sprite, requires to be loaded with a Texture Atlas.
+	 *
+	 * @param name 			What this animation should be called (e.g. `"run"`).
+	 * @param element 		``Element`` object used to add the animation from.
+	 * @param indices		An array of numbers indicating what frames to play in what order (e.g. `[0, 1, 2]`).
+	 * @param frameRate 	The speed in frames per second that the animation should play at (e.g. `40` fps), leave ``null`` to use the default framerate.
+	 * @param looped 		Whether or not the animation is looped or just plays once.
+	 * @param flipX 		Whether the frames should be flipped horizontally.
+	 * @param flipY 		Whether the frames should be flipped vertically.
+	 */
+	public function addByElementIndices(name:String, element:Element, indices:Array<Int>, ?frameRate:Float, ?looped:Bool = true, ?flipX:Bool, ?flipY:Bool):Void
+	{
+		if (!hasAnimateAtlas)
+		{
+			FlxG.log.warn('Sprite is not loaded with a texture atlas.');
+			return;
+		}
+
+		var elementLength:Int = switch (element.elementType)
+		{
+			case ATLAS | TEXT: 1;
+			default: element.toSymbolInstance().libraryItem.timeline.frameCount;
+		}
+
+		var timeline = new Timeline(null, _animate.library, "_element_");
+		var keyframe = timeline.addNewLayer("", elementLength).getFrameAtIndex(0);
+		keyframe.add(element);
+		timeline.refresh();
+
+		frameRate ??= getDefaultFramerate();
+
+		var anim = new FlxAnimateAnimation(this, name, indices, frameRate, looped, flipX, flipY);
+		anim.timeline = timeline;
+		_animations.set(name, anim);
+	}
+
+	/**
 	 * Gets the list of indices of a frame label to be found from a timeline.
 	 *
 	 * @param label Frame label tag to find the indices of.
@@ -285,7 +359,7 @@ class FlxAnimateController extends FlxAnimationController
 				_animate.timeline = curAnim.timeline;
 				_animate.timeline.currentFrame = frame;
 				_animate.timeline.signalFrameChange(frame, this);
-				if (_animate.useRenderTexture)
+				if (_animate.checkRenderTexture())
 					_animate._renderTextureDirty = true;
 				frameIndex = frame;
 				fireCallback();

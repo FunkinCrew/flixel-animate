@@ -1,0 +1,178 @@
+package animate.internal;
+
+import animate.internal.elements.Element;
+import animate.internal.elements.SymbolInstance;
+import flixel.math.FlxMatrix;
+import flixel.system.FlxAssets.FlxShader;
+import flixel.util.FlxDestroyUtil;
+import openfl.display.BlendMode;
+import openfl.geom.ColorTransform;
+
+using flixel.util.FlxColorTransformUtil;
+
+/**
+ * Used internally to store temporal data used between different texture atlas elements to render.
+ * Created as a way to abstract and simplify the way draw data gets merged in one place.
+ */
+class AnimateDrawCommand implements IFlxDestroyable
+{
+	public var parentSprite:Null<FlxAnimate> = null;
+	public var transform:Null<ColorTransform> = null;
+	public var blend:Null<BlendMode> = null;
+	public var antialiasing:Null<Bool> = false;
+	public var shader:Null<FlxShader> = null;
+	public var onSymbolDraw:(symbol:SymbolInstance, command:AnimateDrawCommand) -> Void = null;
+
+	public function new() {}
+
+	public function copyFrom(?command:AnimateDrawCommand)
+	{
+		if (command == null)
+		{
+			parentSprite = null;
+			transform = null;
+			blend = null;
+			antialiasing = null;
+			shader = null;
+			onSymbolDraw = null;
+			return;
+		}
+
+		parentSprite = command.parentSprite;
+		transform = command.transform;
+		blend = command.blend;
+		antialiasing = command.antialiasing;
+		shader = command.shader;
+		onSymbolDraw = command.onSymbolDraw;
+	}
+
+	public function prepareCommand(?command:AnimateDrawCommand, element:Element)
+	{
+		// set some default data if parent command is null
+		if (command == null)
+		{
+			this.parentSprite = null;
+			this.transform = element.transform;
+
+			if (Frame.__isDirtyCall)
+				this.blend = NORMAL
+			else
+				this.blend = element.blend;
+
+			this.antialiasing = true;
+			this.shader = null;
+			this.onSymbolDraw = null;
+			return;
+		}
+
+		// prepare color transform
+		if (element.isColored)
+		{
+			final colorOut:ColorTransform = element._transform;
+			copyTransform(colorOut, element.transform);
+
+			if (command.transform != null)
+				concatTransform(colorOut, command.transform);
+
+			this.transform = colorOut;
+		}
+		else
+		{
+			this.transform = command.transform;
+		}
+
+		// prepare blend
+		this.blend = resolveBlendMode(command.blend, element.blend);
+
+		// prepare shader
+		if (element.shader != null)
+			this.shader = element.shader;
+		else
+			this.shader = command.shader;
+
+		// prepare other values
+		this.parentSprite = command.parentSprite;
+		this.antialiasing = command.antialiasing;
+		this.onSymbolDraw = command.onSymbolDraw;
+	}
+
+	public function prepareFrameCommand(frame:Frame)
+	{
+		// prepare color transform
+		if (frame.isColored)
+		{
+			final colorOut:ColorTransform = frame._transform;
+			copyTransform(colorOut, frame.transform);
+
+			if (transform != null)
+				concatTransform(colorOut, transform);
+
+			this.transform = colorOut;
+		}
+
+		// prepare blend
+		blend = resolveBlendMode(blend, frame.blend);
+	}
+
+	public static inline function resolveBlendMode(commandBlend:BlendMode, elementBlend:BlendMode)
+	{
+		var result = NORMAL;
+		if (!Frame.__isDirtyCall)
+		{
+			if (commandBlend == null || commandBlend == NORMAL)
+				result = elementBlend;
+			else
+				result = commandBlend;
+		}
+		return result;
+	}
+
+	public function isVisible():Bool
+	{
+		return transform == null ? true : transform.alphaMultiplier > 0;
+	}
+
+	// adding my own color transform concat because the operators used by openfl's function assigns more variables
+	// also because it turns out openfl's color transform concat is inverted compared to the usage it has in flixel-animate
+	// i know its stupid but trust me on this one
+
+	@:noCompletion
+	public static function concatTransform(first:ColorTransform, second:ColorTransform):Void
+	{
+		first.redOffset = first.redOffset * second.redMultiplier + second.redOffset;
+		first.greenOffset = first.greenOffset * second.greenMultiplier + second.greenOffset;
+		first.blueOffset = first.blueOffset * second.blueMultiplier + second.blueOffset;
+		first.alphaOffset = first.alphaOffset * second.alphaMultiplier + second.alphaOffset;
+
+		first.redMultiplier = first.redMultiplier * second.redMultiplier;
+		first.greenMultiplier = first.greenMultiplier * second.greenMultiplier;
+		first.blueMultiplier = first.blueMultiplier * second.blueMultiplier;
+		first.alphaMultiplier = first.alphaMultiplier * second.alphaMultiplier;
+	}
+
+	// TODO: add this in other places that copy color transforms too
+
+	@:noCompletion
+	public static function copyTransform(to:ColorTransform, from:ColorTransform):Void
+	{
+		to.redMultiplier = from.redMultiplier;
+		to.greenMultiplier = from.greenMultiplier;
+		to.blueMultiplier = from.blueMultiplier;
+		to.alphaMultiplier = from.alphaMultiplier;
+
+		to.redOffset = from.redOffset;
+		to.greenOffset = from.greenOffset;
+		to.blueOffset = from.blueOffset;
+		to.alphaOffset = from.alphaOffset;
+	}
+
+	public function destroy():Void
+	{
+		parentSprite = null;
+		transform = null;
+		blend = null;
+		antialiasing = false;
+		shader = null;
+		onSymbolDraw = null;
+	}
+}
