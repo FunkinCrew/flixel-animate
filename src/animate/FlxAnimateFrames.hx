@@ -157,6 +157,8 @@ class FlxAnimateFrames extends FlxAtlasFrames
 
 		for (collection in addedCollections)
 		{
+			if (collection == null || collection.dictionary == null)
+				break;
 			if (collection.dictionary.exists(name))
 				return collection.dictionary.get(name);
 		}
