@@ -240,7 +240,7 @@ class FlxAnimateFrames extends FlxAtlasFrames
 			// - maru
 			for (spritemap in cast(cachedAtlas.parent, FlxAnimateSpritemapCollection).spritemaps)
 			{
-				if (#if (flixel >= "5.6.0") spritemap.isDestroyed #else spritemap.shader == null #end)
+				if (#if (flixel >= "5.6.0") spritemap.isDestroyed #else spritemap.shader == null #end || spritemap.bitmap == null || spritemap.bitmap.width <= 0)
 				{
 					isAtlasDestroyed = true;
 					break;
