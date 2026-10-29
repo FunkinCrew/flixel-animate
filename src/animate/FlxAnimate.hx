@@ -558,6 +558,33 @@ class FlxAnimate extends FlxSprite
 	}
 	#end
 
+	static var _frameBoundsMatrix:FlxMatrix = new FlxMatrix();
+
+	/**
+	 * Returns the screen bounds of the current frame.
+	 *
+	 * @param rect		Optional, the rectangle used to input the final calculated values.
+	 * @param camera	Optional, the camera to calculate bounds for, uses the default camera if ``null``.
+	 * @return			``FlxRect`` with the current frame's screen bounds.
+	 */
+	public function getCurrentFrameBounds(?rect:FlxRect, ?camera:FlxCamera):FlxRect
+	{
+		if (!isAnimate)
+			return getScreenBounds(rect, camera);
+
+		if (camera == null)
+			camera = #if (flixel >= "6.0.0") getDefaultCamera() #else FlxG.camera #end;
+
+		final bounds = timeline._bounds;
+		final matrix = _frameBoundsMatrix;
+		matrix.identity();
+		matrix.translate(-bounds.x, -bounds.y);
+		prepareAnimateMatrix(matrix, camera, bounds);
+
+		rect = timeline.getBounds(animation.frameIndex, false, rect, null, true, true);
+		return Timeline.applyMatrixToRect(rect, matrix);
+	}
+
 	function getAnimateOrigin(?result:FlxPoint):FlxPoint
 	{
 		result ??= FlxPoint.get();
