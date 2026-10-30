@@ -36,7 +36,7 @@ class FlxSpriteElement extends FlxTypedElement<FlxSprite>
 		super.destroy();
 		_colorTransform = null;
 		_point = FlxDestroyUtil.put(_point);
-		_point = FlxDestroyUtil.put(_screenPoint);
+		_screenPoint = FlxDestroyUtil.put(_screenPoint);
 	}
 
 	override function applyObjectTransform(camera:FlxCamera, parentMatrix:FlxMatrix, ?command:AnimateDrawCommand)
