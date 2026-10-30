@@ -1,5 +1,6 @@
 package animate.internal.elements;
 
+import animate.FlxAnimate;
 import flixel.FlxBasic;
 import flixel.FlxCamera;
 import flixel.FlxG;
@@ -21,6 +22,8 @@ class FlxSpriteElement extends FlxTypedElement<FlxSprite>
 	var _point:FlxPoint = null;
 	var _screenPoint:FlxPoint = null;
 	var _angle:Float = 0.0;
+	var _scale:FlxPoint = null;
+	var _spriteMatrix:FlxMatrix = null;
 
 	public function new(?sprite:FlxSprite)
 	{
@@ -29,6 +32,8 @@ class FlxSpriteElement extends FlxTypedElement<FlxSprite>
 		this._colorTransform = new ColorTransform();
 		this._point = FlxPoint.get();
 		this._screenPoint = FlxPoint.get();
+		this._scale = FlxPoint.get();
+		this._spriteMatrix = new FlxMatrix();
 	}
 
 	override function destroy():Void
@@ -37,10 +42,14 @@ class FlxSpriteElement extends FlxTypedElement<FlxSprite>
 		_colorTransform = null;
 		_point = FlxDestroyUtil.put(_point);
 		_screenPoint = FlxDestroyUtil.put(_screenPoint);
+		_scale = FlxDestroyUtil.put(_scale);
+		_spriteMatrix = null;
 	}
 
 	override function applyObjectTransform(camera:FlxCamera, parentMatrix:FlxMatrix, ?command:AnimateDrawCommand)
 	{
+		_scale.copyFrom(basic.scale);
+
 		var hasTransform = transform != null;
 		if (hasTransform)
 		{
@@ -72,14 +81,34 @@ class FlxSpriteElement extends FlxTypedElement<FlxSprite>
 
 		drawCommand.prepareCommand(command, this);
 
-		var x = parentMatrix.transformX(basic.x, basic.y);
-		var y = parentMatrix.transformY(basic.x, basic.y);
+		var spriteMatrix = _spriteMatrix;
+		spriteMatrix.identity();
+
+		var parentSprite = command.parentSprite;
+		@:privateAccess
+		if (parentSprite != null && !parentSprite.checkRenderTexture())
+			parentSprite.prepareAnimateMatrix(spriteMatrix, camera, parentSprite.timeline._bounds);
+
+		var determinant = spriteMatrix.a * spriteMatrix.d - spriteMatrix.b * spriteMatrix.c;
+		var flipSign = determinant < 0 ? -1 : 1;
+		var spriteScale = Math.sqrt(Math.abs(determinant));
+
+		var pivotX = basic.origin.x - basic.offset.x;
+		var pivotY = basic.origin.y - basic.offset.y;
+
+		var x = parentMatrix.transformX(basic.x, basic.y) + spriteMatrix.a * pivotX + spriteMatrix.c * pivotY - pivotX;
+		var y = parentMatrix.transformY(basic.x, basic.y) + spriteMatrix.b * pivotX + spriteMatrix.d * pivotY - pivotY;
 
 		basic.setPosition(0, 0);
 		var screenPoint = basic.getScreenPosition(_screenPoint, camera);
 		basic.setPosition(x - screenPoint.x, y - screenPoint.y);
 
-		basic.angle += Math.atan2(parentMatrix.b, parentMatrix.a) * 180 / Math.PI;
+		var symbolX = (spriteMatrix.d * parentMatrix.a - spriteMatrix.c * parentMatrix.b) * flipSign;
+		var symbolY = (spriteMatrix.a * parentMatrix.b - spriteMatrix.b * parentMatrix.a) * flipSign;
+		var symbolAngle = basic.angle + Math.atan2(symbolY, symbolX) * 180 / Math.PI;
+
+		basic.angle = Math.atan2(spriteMatrix.b, spriteMatrix.a) * 180 / Math.PI + symbolAngle * flipSign;
+		basic.scale.set(basic.scale.x * spriteScale, basic.scale.y * spriteScale * flipSign);
 
 		if (isColored)
 			basic.colorTransform.concat(_transform);
@@ -95,6 +124,7 @@ class FlxSpriteElement extends FlxTypedElement<FlxSprite>
 
 		basic.setPosition(_point.x, _point.y);
 		basic.angle = _angle;
+		basic.scale.copyFrom(_scale);
 		basic.blend = _blend;
 		basic.camera = _camera;
 		basic.antialiasing = _antialiasing;
@@ -136,6 +166,7 @@ class FlxTypedElement<T:FlxBasic> extends Element
 	public var basic:T;
 	public var active:Bool = true;
 	public var destroyObject:Bool = false;
+	public var owner:Null<FlxAnimate> = null;
 
 	var _camera:FlxCamera;
 
@@ -151,6 +182,7 @@ class FlxTypedElement<T:FlxBasic> extends Element
 		if (destroyObject)
 			FlxDestroyUtil.destroy(basic);
 		basic = null;
+		owner = null;
 		_camera = null;
 	}
 
@@ -167,6 +199,9 @@ class FlxTypedElement<T:FlxBasic> extends Element
 	override function draw(camera:FlxCamera, index:Int, frameIndex:Int, parentMatrix:FlxMatrix, ?command:AnimateDrawCommand)
 	{
 		if (basic == null || !basic.visible)
+			return;
+
+		if (owner != null && (command == null || command.parentSprite != owner))
 			return;
 
 		_camera = basic.camera;
