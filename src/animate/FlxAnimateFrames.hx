@@ -276,8 +276,9 @@ class FlxAnimateFrames extends FlxAtlasFrames
 			if (isAtlasDestroyed)
 			{
 				FlxG.log.warn('Texture Atlas with the key "$animkey" was previously cached, but incomplete. Was it incorrectly destroyed?');
-				cachedAtlas.destroy();
 				_cachedAtlases.remove(animkey);
+				if (cachedAtlas.parent.useCount <= 0)
+					cachedAtlas.destroy();
 			}
 			else
 			{
@@ -317,7 +318,13 @@ class FlxAnimateFrames extends FlxAtlasFrames
 			key = path;
 
 		if (FlxG.bitmap.checkCache(key))
-			return FlxG.bitmap.get(key);
+		{
+			var graphic = FlxG.bitmap.get(key);
+			if (graphic.bitmap != null && graphic.bitmap.width > 0)
+				return graphic;
+
+			FlxG.bitmap.removeByKey(key);
+		}
 
 		return FlxG.bitmap.add(FlxAnimateAssets.getBitmapData(path), false, key);
 	}
@@ -606,7 +613,7 @@ class FlxAnimateFrames extends FlxAtlasFrames
 
 	override function destroy():Void
 	{
-		if (_cachedAtlases.exists(path))
+		if (_cachedAtlases.get(path) == this)
 			_cachedAtlases.remove(path);
 
 		super.destroy();
