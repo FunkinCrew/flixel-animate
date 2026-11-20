@@ -131,13 +131,17 @@ class FlxAnimate extends FlxSprite
 		_drawCommand = new AnimateDrawCommand();
 
 		var loadedAnimateAtlas:Bool = false;
+		var loadedSWF:Bool = false;
+
 		if (simpleGraphic != null && simpleGraphic is String)
 		{
-			if (Path.extension(simpleGraphic).length == 0)
+			if (Path.extension(simpleGraphic).toLowerCase() == "swf")
+				loadedSWF = true;
+			else if (Path.extension(simpleGraphic).length == 0)
 				loadedAnimateAtlas = true;
 		}
 
-		super(x, y, loadedAnimateAtlas ? null : simpleGraphic);
+		super(x, y, (loadedAnimateAtlas || loadedSWF) ? null : simpleGraphic);
 
 		#if flash
 		// texture atlases are so complex that you should just render them normally on blit
@@ -146,6 +150,8 @@ class FlxAnimate extends FlxSprite
 
 		if (loadedAnimateAtlas)
 			frames = FlxAnimateFrames.fromAnimate(simpleGraphic, null, null, null, false, settings);
+		else if (loadedSWF)
+			frames = FlxAnimateFrames.fromSWF(simpleGraphic, false, settings);
 	}
 
 	override function initVars()

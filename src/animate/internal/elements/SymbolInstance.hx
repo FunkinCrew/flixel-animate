@@ -10,6 +10,7 @@ import flixel.math.FlxRect;
 import flixel.util.FlxColor;
 import flixel.util.FlxDestroyUtil;
 import flixel.util.typeLimit.OneOfTwo;
+import openfl.geom.ColorTransform;
 
 using flixel.util.FlxColorTransformUtil;
 
@@ -59,23 +60,10 @@ class SymbolInstance extends AnimateElement<SymbolInstanceJson>
 		var color = data.C;
 		if (color != null)
 		{
-			switch (color.M)
-			{
-				case "AD" | "Advanced":
-					setColorTransform(color.RM, color.GM, color.BM, color.AM, color.RO, color.GO, color.BO, color.AO);
-				case "CA" | "Alpha":
-					setColorTransform(1.0, 1.0, 1.0, color.AM, 0.0, 0.0, 0.0, 0.0);
-				case "CBRT" | "Brightness":
-					var brightness = color.BRT;
-					var colorMult = 1.0 - Math.abs(brightness);
-					var colorOff = brightness >= 0.0 ? brightness * 255.0 : 0.0;
-					setColorTransform(colorMult, colorMult, colorMult, 1.0, colorOff, colorOff, colorOff, 0.0);
-				case "T" | "Tint":
-					var tint:FlxColor = FlxColor.fromString(color.TC);
-					var tintMult:Float = color.TM;
-					var mult:Float = 1.0 - tintMult;
-					setColorTransform(mult, mult, mult, 1.0, tint.red * tintMult, tint.green * tintMult, tint.blue * tintMult, 0.0);
-			}
+			var ct:Null<ColorTransform> = color.toColorTransform();
+			if (ct != null)
+				setColorTransform(ct.redMultiplier, ct.greenMultiplier, ct.blueMultiplier, ct.alphaMultiplier, ct.redOffset, ct.greenOffset,
+					ct.blueOffset, ct.alphaOffset);
 		}
 	}
 

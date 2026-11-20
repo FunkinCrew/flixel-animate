@@ -4,19 +4,23 @@ import animate.FlxAnimateJson;
 import animate.internal.AnimateDrawCommand;
 import animate.internal.elements.Element;
 import animate.internal.filters.Blend;
+import animate.internal.swf.ShapeTypes.Shape;
 import flixel.FlxCamera;
+import flixel.FlxG;
 import flixel.graphics.frames.FlxFrame;
 import flixel.math.FlxMatrix;
 import flixel.math.FlxPoint;
 import flixel.math.FlxRect;
 import flixel.system.FlxAssets.FlxShader;
+import flixel.util.FlxDestroyUtil;
+import openfl.Vector;
 import openfl.display.BlendMode;
 import openfl.geom.ColorTransform;
 
 using flixel.util.FlxColorTransformUtil;
+using StringTools;
 
 #if FLX_DEBUG
-import flixel.FlxG;
 import flixel.util.FlxColor;
 #end
 #if flash
@@ -30,6 +34,7 @@ import flixel.graphics.FlxGraphic;
 class AtlasInstance extends AnimateElement<AtlasInstanceJson>
 {
 	public var frame:FlxFrame;
+	public var shape:Shape;
 
 	var tileMatrix:FlxMatrix;
 	var sourceFrame:FlxFrame;
@@ -43,21 +48,44 @@ class AtlasInstance extends AnimateElement<AtlasInstanceJson>
 
 		if (data != null)
 		{
-			this.frame = parent.getByName(data.N);
-			this.sourceFrame = this.frame;
 			this.matrix = data.MX.toMatrix(this.matrix);
 
-			#if flash
-			// FlxFrame.paint doesnt work for rotated frames lol
-			var bitmap = this.frame.checkInputBitmap(null, null, this.frame.angle);
-			var mat = this.frame.prepareBlitMatrix(FlxFrame._matrix, true);
-			bitmap.draw(this.frame.parent.bitmap, mat, null, null, this.frame.getDrawFrameRect(mat, FlxFrame._rect));
-			this.frame = FlxGraphic.fromBitmapData(bitmap).imageFrame.frame;
-			#else
-			// new flixel broke the tileMatrix on hashlink, gotta manually do this shit
-			// TODO: remove this when it gets fixed on flixel 6.1.1 or something
-			this.frame.prepareBlitMatrix(tileMatrix, false);
-			#end
+			if (data.N != null && data.N.startsWith("swf_shape_"))
+				loadShape(data, parent);
+			else
+				loadFrame(data, parent);
+		}
+	}
+
+	function loadFrame(data:AtlasInstanceJson, parent:FlxAnimateFrames):Void
+	{
+		this.frame = parent.getByName(data.N);
+		this.sourceFrame = this.frame;
+
+		#if flash
+		// FlxFrame.paint doesnt work for rotated frames lol
+		var bitmap = this.frame.checkInputBitmap(null, null, this.frame.angle);
+		var mat = this.frame.prepareBlitMatrix(FlxFrame._matrix, true);
+		bitmap.draw(this.frame.parent.bitmap, mat, null, null, this.frame.getDrawFrameRect(mat, FlxFrame._rect));
+		this.frame = FlxGraphic.fromBitmapData(bitmap).imageFrame.frame;
+		#else
+		// new flixel broke the tileMatrix on hashlink, gotta manually do this shit
+		// TODO: remove this when it gets fixed on flixel 6.1.1 or something
+		this.frame.prepareBlitMatrix(tileMatrix, false);
+		#end
+	}
+
+	function loadShape(data:AtlasInstanceJson, parent:FlxAnimateFrames):Void
+	{
+		this.shape = parent.getShapeByName(data.N);
+
+		var color:ColorJson = data.C;
+		if (color != null)
+		{
+			var ct:Null<ColorTransform> = color.toColorTransform();
+			if (ct != null)
+				setColorTransform(ct.redMultiplier, ct.greenMultiplier, ct.blueMultiplier, ct.alphaMultiplier, ct.redOffset, ct.greenOffset,
+					ct.blueOffset, ct.alphaOffset);
 		}
 	}
 
@@ -93,14 +121,21 @@ class AtlasInstance extends AnimateElement<AtlasInstanceJson>
 		tileMatrix = null;
 		frame = null;
 		sourceFrame = null;
+		shape = null;
+
+		_bounds = FlxDestroyUtil.put(_bounds);
 	}
 
 	override function draw(camera:FlxCamera, index:Int, frameIndex:Int, parentMatrix:FlxMatrix, ?command:AnimateDrawCommand):Void
 	{
-		if (frame == null || frame.frame == null || frame.parent == null || frame.parent.bitmap == null) // should add a warn here
+		if ((frame == null || frame.frame == null || frame.parent == null || frame.parent.bitmap == null) && shape == null) // should add a warn here
 			return;
 
-		_mat.copyFrom(tileMatrix);
+		if (shape == null)
+			_mat.copyFrom(tileMatrix);
+		else
+			_mat.identity();
+
 		_mat.concat(matrix);
 		_mat.concat(parentMatrix);
 
@@ -115,16 +150,49 @@ class AtlasInstance extends AnimateElement<AtlasInstanceJson>
 
 		drawCommand.prepareCommand(command, this);
 
-		#if flash
-		drawPixelsFlash(camera, _mat, drawCommand.transform, drawCommand.blend, drawCommand.antialiasing);
-		#else
-		camera.drawPixels(frame, null, _mat, drawCommand.transform, drawCommand.blend, drawCommand.antialiasing, drawCommand.shader);
-		#end
+		if (shape != null)
+		{
+			drawShape(camera, _mat, drawCommand.transform, drawCommand.blend);
+		}
+		else
+		{
+			#if flash
+			drawPixelsFlash(camera, _mat, drawCommand.transform, drawCommand.blend, drawCommand.antialiasing);
+			#else
+			camera.drawPixels(frame, null, _mat, drawCommand.transform, drawCommand.blend, drawCommand.antialiasing, drawCommand.shader);
+			#end
+		}
 
 		#if FLX_DEBUG
 		if (FlxG.debugger.drawDebug && FlxAnimate.drawDebugLimbs && !Frame.__isDirtyCall)
 			drawBoundingBox(camera, _bounds);
 		#end
+	}
+
+	function drawShape(camera:FlxCamera, matrix:FlxMatrix, ?transform:ColorTransform, ?blend:BlendMode):Void
+	{
+		final graphic = FlxG.bitmap.whitePixel.parent;
+		final verts = _meshVerts;
+		final uvtData = _meshUVT;
+
+		for (mesh in shape.getMeshes())
+		{
+			final source = mesh.verts;
+			final length:Int = source.length;
+			verts.length = length;
+			uvtData.length = length;
+
+			for (i in 0...Std.int(length / 2))
+			{
+				final x = source[i * 2];
+				final y = source[i * 2 + 1];
+				verts[i * 2] = matrix.transformX(x, y);
+				verts[i * 2 + 1] = matrix.transformY(x, y);
+				uvtData[i * 2] = uvtData[i * 2 + 1] = 0.5;
+			}
+
+			camera.drawTriangles(graphic, verts, mesh.indices, uvtData, mesh.colors, null, blend, false, false, transform);
+		}
 	}
 
 	#if flash
@@ -142,16 +210,26 @@ class AtlasInstance extends AnimateElement<AtlasInstanceJson>
 
 	var _bounds:FlxRect = FlxRect.get();
 
+	var _meshVerts = new Vector<Float>();
+	var _meshUVT = new Vector<Float>();
+
 	public function isOnScreen(camera:FlxCamera, matrix:FlxMatrix):Bool
 	{
 		if (Frame.__isDirtyCall)
 			return true;
 
 		var bounds = _bounds;
-		bounds.x = 0.0;
-		bounds.y = 0.0;
-		bounds.width = frame.frame.width;
-		bounds.height = frame.frame.height;
+		if (shape != null)
+		{
+			bounds.copyFrom(shape.bounds);
+		}
+		else
+		{
+			bounds.x = 0.0;
+			bounds.y = 0.0;
+			bounds.width = frame.frame.width;
+			bounds.height = frame.frame.height;
+		}
 
 		Timeline.applyMatrixToRect(bounds, matrix);
 
@@ -175,10 +253,18 @@ class AtlasInstance extends AnimateElement<AtlasInstanceJson>
 	{
 		rect = super.getBounds(0, rect);
 
-		if (frame != null)
-			rect.set(0, 0, frame.frame.width, frame.frame.height);
+		if (shape != null)
+		{
+			rect.copyFrom(shape.bounds);
+		}
+		else
+		{
+			if (frame != null)
+				rect.set(0, 0, frame.frame.width, frame.frame.height);
 
-		Timeline.applyMatrixToRect(rect, tileMatrix);
+			Timeline.applyMatrixToRect(rect, tileMatrix);
+		}
+
 		Timeline.applyMatrixToRect(rect, this.matrix);
 		Timeline.applyMatrixToRect(rect, matrix);
 

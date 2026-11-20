@@ -377,7 +377,7 @@ class Timeline implements IFlxDestroyable
 			var layer = new Layer(this);
 			layer.name = layerJson.LN;
 			layers.push(layer);
-			_layerMap.set(layer.name, layer);
+			_layerMap.set(layer?.name ?? '', layer);
 		}
 
 		for (i in 0...layersJson.length)
