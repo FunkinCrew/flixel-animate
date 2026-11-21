@@ -133,7 +133,7 @@ class FilterRenderer
 				blend = element.toMovieClipInstance().blend;
 		}
 
-		var frame = FlxGraphic.fromBitmapData(masked).imageFrame.frame;
+		var frame = FlxGraphic.fromBitmapData(masked, false, null, false).imageFrame.frame;
 		frame.parent.persist = true;
 		frame.parent.destroyOnNoUse = false;
 		MaskShader.maskAlpha(masked, masker, rect);
@@ -285,7 +285,7 @@ class FilterRenderer
 			resultFilteredBounds.copyToFlash(gfxBounds);
 		});
 
-		var frame = FlxGraphic.fromBitmapData(bitmap).imageFrame.frame;
+		var frame = FlxGraphic.fromBitmapData(bitmap, false, null, false).imageFrame.frame;
 		frame.parent.persist = true;
 		frame.parent.destroyOnNoUse = false;
 		filterFrame(frame, filters);
@@ -312,7 +312,8 @@ class FilterRenderer
 		if (filters == null || filters.length <= 0)
 			return;
 
-		var filterFrame = new FlxFrame(FlxGraphic.fromRectangle(Math.ceil(frame.frame.width), Math.ceil(frame.frame.height), 0, true));
+		var filterFrame = new FlxFrame(FlxGraphic.fromBitmapData(new BitmapData(Math.ceil(frame.frame.width), Math.ceil(frame.frame.height), true, 0), false,
+			null, false));
 		filterFrame.parent.bitmap = applyFilter(filterFrame.parent.bitmap, frame.parent.bitmap, filters, point);
 		filterFrame.frame = FlxRect.get(0, 0, filterFrame.parent.bitmap.width, filterFrame.parent.bitmap.height);
 
